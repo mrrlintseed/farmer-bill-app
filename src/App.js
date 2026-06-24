@@ -1142,24 +1142,57 @@ export default function App() {
   const saveTimer = useRef(null);
 
   useEffect(() => {
-    const saved = storage.getFarmers();
-    setFarmers(saved && saved.length > 0 ? saved : sampleFarmers);
-    setSubOrgs(storage.getSubOrgs() || []);
+    const loadData = async () => {
+      setCloudStatus("saving");
+      const cloud = await loadFromCloud();
+      if (cloud && cloud.farmers && cloud.farmers.length > 0) {
+        setFarmers(cloud.farmers);
+        setSubOrgs(cloud.subOrgs || []);
+        if (cloud.varietySettings && Object.keys(cloud.varietySettings).length > 0) {
+          setVarietySettings(cloud.varietySettings);
+          localStorage.setItem("variety_settings", JSON.stringify(cloud.varietySettings));
+        }
+        storage.saveFarmers(cloud.farmers);
+        storage.saveSubOrgs(cloud.subOrgs || []);
+      } else {
+        const saved = storage.getFarmers();
+        setFarmers(saved && saved.length > 0 ? saved : sampleFarmers);
+        setSubOrgs(storage.getSubOrgs() || []);
+      }
+      setCloudStatus("idle");
+    };
+    loadData();
   }, []);
 
-  const saveFarmers = (data) => {
+  const saveFarmers = async (data) => {
     const ok = storage.saveFarmers(data);
     setSaveStatus(ok ? "saved" : "error");
     setTimeout(() => setSaveStatus("idle"), 2000);
+    // Also save to Firebase
+    setCloudStatus("saving");
+    const currentSubOrgs = subOrgs;
+    const currentVS = JSON.parse(localStorage.getItem("variety_settings") || "{}");
+    const saved = await saveToCloud(data, currentSubOrgs, currentVS);
+    setCloudStatus(saved ? "saved" : "error");
+    if (saved) setCloudLastSaved(new Date().toLocaleTimeString("en-IN", {hour:"2-digit", minute:"2-digit"}));
+    setTimeout(() => setCloudStatus("idle"), 3000);
   };
   const updateFarmers = (data) => {
     setFarmers(data);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => saveFarmers(data), 800);
   };
-  const updateSubOrgs = (data) => {
+  const updateSubOrgs = async (data) => {
     setSubOrgs(data);
     storage.saveSubOrgs(data);
+    // Also save to Firebase
+    setCloudStatus("saving");
+    const currentFarmers = farmers;
+    const currentVS = JSON.parse(localStorage.getItem("variety_settings") || "{}");
+    const saved = await saveToCloud(currentFarmers, data, currentVS);
+    setCloudStatus(saved ? "saved" : "error");
+    if (saved) setCloudLastSaved(new Date().toLocaleTimeString("en-IN", {hour:"2-digit", minute:"2-digit"}));
+    setTimeout(() => setCloudStatus("idle"), 3000);
   };
 
   const addFarmer = (village = "") => {
