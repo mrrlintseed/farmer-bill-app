@@ -712,8 +712,8 @@ function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVar
   const cropCount = (farmer.crops || []).length;
 
   return (
-    <div style={{ border: "1.5px solid #b8d8b8", borderRadius: 8, padding: 16, marginBottom: 14, background: "#f8fdf8" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+    <div style={{ border: "1.5px solid #b8d8b8", borderRadius: 8, padding: 16, marginBottom: 14, background: "#f8fdf8" }} className="farmer-form-pad">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap:"wrap", gap:8 }}>
         <div style={{ fontWeight: 700, color: "#1a4a1a", fontSize: 14 }}>Farmer #{index + 1}</div>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
           <label style={{ display:"flex", alignItems:"center", gap:6, cursor:"pointer", background: farmer.billingDone?"#e8f5e9":"#fff3cd", border:`1.5px solid ${farmer.billingDone?"#2d6a2d":"#c8a000"}`, borderRadius:6, padding:"4px 10px" }}>
@@ -728,7 +728,7 @@ function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVar
           <button onClick={onRemove} style={{ background: "#e74c3c", color: "#fff", border: "none", borderRadius: 4, padding: "3px 10px", cursor: "pointer", fontSize: 12 }}>Remove</button>
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "0.6fr 1fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "0.6fr 1fr 1fr 1fr", gap: 8, marginBottom: 8 }} className="mobile-grid-4">
         <div><label style={{ fontSize: 11, color: "#555", display: "block", marginBottom: 2 }}>Farmer No</label><input {...inp} value={farmer.farmerNo||""} onChange={e => onChange({...farmer,farmerNo:e.target.value})} placeholder="001" style={{...inp.style,fontWeight:700}} /></div>
         {[["name","Name"],["fatherName","Father"],["village","Village"]].map(([f,l]) => (
           <div key={f}><label style={{ fontSize: 11, color: "#555", display: "block", marginBottom: 2 }}>{l}</label><input {...inp} value={farmer[f]||""} onChange={e => onChange({...farmer,[f]:e.target.value})} /></div>
@@ -751,7 +751,7 @@ function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVar
         </div>
         {(farmer.advances||[]).map((a,i) => (
           <div key={i} style={{ marginBottom:8 }}>
-            <div style={{ display:"grid", gridTemplateColumns:"1.2fr 1fr 0.7fr 1fr 32px", gap:6, alignItems:"end" }}>
+            <div style={{ display:"grid", gridTemplateColumns:"1.2fr 1fr 0.7fr 1fr 32px", gap:6, alignItems:"end" }} className="mobile-adv-grid">
               <div><label style={{fontSize:10,color:"#666",display:"block"}}>Date</label><input {...inp} type="date" value={a.date} onChange={e=>updAdv(i,"date",e.target.value)} /></div>
               <div><label style={{fontSize:10,color:"#666",display:"block"}}>Amount ₹</label><input {...inp} type="number" value={a.amount} onChange={e=>updAdv(i,"amount",e.target.value)} /></div>
               <div><label style={{fontSize:10,color:"#666",display:"block"}}>Interest %</label><input {...inp} type="number" step="0.5" value={a.interestRate} onChange={e=>updAdv(i,"interestRate",e.target.value)} /></div>
@@ -793,7 +793,7 @@ function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVar
           const qty = parseFloat(c.quantity)||0;
           return (
             <div key={i} style={{background:"#fff",border:"1px solid #c8dfc8",borderRadius:6,padding:"8px 10px",marginBottom:8}}>
-              <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 0.7fr 0.7fr 1fr",gap:6,alignItems:"end",marginBottom:6}}>
+              <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 0.7fr 0.7fr 1fr",gap:6,alignItems:"end",marginBottom:6}} className="mobile-crop-grid">
                 <div><label style={{fontSize:10,color:"#666",display:"block"}}>Crop Variety</label><input {...inp} value={c.variety} onChange={e=>{
                   const variety = e.target.value;
                   const vpRate = getVarietyRate ? getVarietyRate(variety) : null;
@@ -1884,20 +1884,42 @@ export default function App() {
     <div style={{ fontFamily:"Noto Serif,Georgia,serif", minHeight:"100vh", background:"#f0f7f0" }}>
       <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Telugu&family=Noto+Serif:wght@400;600;700&display=swap" rel="stylesheet" />
 
+      <style>{`
+        @media (max-width: 600px) {
+          .mobile-toolbar { flex-direction: column !important; align-items: stretch !important; gap: 10px !important; }
+          .mobile-toolbar-btns { display: flex !important; flex-wrap: wrap !important; gap: 8px !important; }
+          .mobile-toolbar-btns button, .mobile-toolbar-btns label {
+            flex: 1 1 calc(50% - 8px) !important;
+            text-align: center !important;
+            font-size: 13px !important;
+            padding: 10px 6px !important;
+          }
+          .mobile-nav { width: 100% !important; justify-content: space-between !important; }
+          .mobile-nav button { flex: 1 !important; font-size: 11px !important; padding: 7px 4px !important; text-align: center !important; }
+          .mobile-grid-4 { grid-template-columns: 1fr 1fr !important; }
+          .mobile-adv-grid { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+          .mobile-crop-grid { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+          .mobile-panel { width: 100% !important; min-width: unset !important; flex-direction: row !important; flex-wrap: wrap !important; }
+          .farmer-form-pad { padding: 12px !important; }
+          input, select { font-size: 16px !important; min-height: 42px !important; }
+          input[type=checkbox] { min-height: unset !important; width: 18px !important; height: 18px !important; }
+          button { min-height: 38px !important; }
+        }
+      `}</style>
       {/* Top Bar */}
-      <div style={{ background:"linear-gradient(135deg,#1a4a1a,#2d6a2d)",color:"#fff",padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8 }}>
+      <div style={{ background:"linear-gradient(135deg,#1a4a1a,#2d6a2d)",color:"#fff",padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8 }} className="mobile-toolbar">
         <div style={{ display:"flex",alignItems:"center",gap:14 }}>
           <div>
             <div style={{ fontSize:18,fontWeight:700 }}>🌾 Farmer Bill Generator</div>
             <div style={{ fontSize:11,opacity:0.8 }}>రైతు పంట బిల్లు జనరేటర్</div>
           </div>
-          <div style={{ display:"flex",background:"rgba(0,0,0,0.25)",borderRadius:8,padding:3,gap:2 }}>
+          <div style={{ display:"flex",background:"rgba(0,0,0,0.25)",borderRadius:8,padding:3,gap:2,flexWrap:"wrap" }} className="mobile-nav">
             {[["farmers","👨‍🌾 Farmers"],["suborgs","🏢 Sub-Orgs"],["dashboard","📊 Dashboard"],["variety","🌾 Variety Pay"]].map(([m,l]) => (
               <button key={m} onClick={()=>setMode(m)} style={{ padding:"5px 12px",borderRadius:6,border:"none",cursor:"pointer",fontWeight:700,fontSize:12,background:mode===m?"#fff":"transparent",color:mode===m?"#1a4a1a":"#ccc" }}>{l}</button>
             ))}
           </div>
         </div>
-        <div style={{ display:"flex",gap:6,alignItems:"center",flexWrap:"wrap" }}>
+        <div style={{ display:"flex",gap:6,alignItems:"center",flexWrap:"wrap" }} className="mobile-toolbar-btns">
           <div style={{ fontSize:12,padding:"4px 12px",borderRadius:20,background:"rgba(255,255,255,0.15)",color:"#fff",minWidth:90,textAlign:"center" }}>
             {saveStatus==="saving"&&"💾 Saving..."}
             {saveStatus==="saved"&&"✅ Saved"}
