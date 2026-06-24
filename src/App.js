@@ -1907,7 +1907,6 @@ export default function App() {
           <button onClick={mode==="suborgs" ? exportSubOrgData : exportAllData} style={btnStyle}>
             📊 {mode==="suborgs" ? "Export Sub-Org" : "Export Excel"}
           </button>
-          <button onClick={() => { storage.exportToFile(farmers, subOrgs); markBackupDone(); }} style={{...btnStyle, background:"rgba(0,120,215,0.6)"}}>☁️ Save to OneDrive</button>
           {/* Cloud sync status */}
           <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:6,background:"rgba(0,0,0,0.3)",fontSize:11,color:"#fff"}}>
             {cloudStatus==="saving" && <><span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⟳</span> Saving...</>}
@@ -1916,10 +1915,6 @@ export default function App() {
             {cloudStatus==="idle" && <><span style={{color:"#aaa"}}>☁️</span> Cloud ready</>}
           </div>
           <button onClick={()=>setShowSettings(true)} style={{...btnStyle, background:"rgba(80,80,80,0.6)"}}>⚙️ Settings</button>
-          <label style={{...btnStyle, background:"rgba(0,120,215,0.6)", display:"inline-block", cursor:"pointer"}}>
-            📂 Load from OneDrive
-            <input type="file" accept=".json" onChange={e => { const f=e.target.files[0]; if(f) storage.importFromFile(f, (fm,so)=>{ setFarmers(fm); setSubOrgs(so); alert("✅ Data loaded successfully!"); }, err=>alert("⚠️ Error: "+err)); }} style={{display:"none"}} />
-          </label>
           <button onClick={mode==="suborgs"?downloadSubOrgTemplate:downloadTemplate} style={btnStyle}>📥 Template</button>
           <label style={{...btnStyle,display:"inline-block"}}>📤 Upload Excel<input type="file" accept=".xlsx,.xls,.csv" onChange={mode==="suborgs"?handleSubOrgExcelUpload:handleExcelUpload} style={{display:"none"}} /></label>
         </div>
@@ -1939,18 +1934,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Backup reminder banner */}
-      {daysSinceBackup >= 7 && (
-        <div style={{background:"#c0392b",color:"#fff",padding:"8px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
-          <div style={{fontWeight:700,fontSize:12}}>
-            ⚠️ {daysSinceBackup >= 999 ? "No backup found!" : `Last backup was ${daysSinceBackup} days ago!`} — Please export your data now to avoid data loss.
-          </div>
-          <div style={{display:"flex",gap:8}}>
-            <button onClick={()=>{ storage.exportToFile(farmers, subOrgs); markBackupDone(); }} style={{background:"#fff",color:"#c0392b",border:"none",borderRadius:4,padding:"4px 12px",fontWeight:700,cursor:"pointer",fontSize:12}}>📊 Export Now</button>
-            <button onClick={markBackupDone} style={{background:"rgba(255,255,255,0.2)",color:"#fff",border:"none",borderRadius:4,padding:"4px 10px",cursor:"pointer",fontSize:12}}>✕ Dismiss</button>
-          </div>
-        </div>
-      )}
 
       {/* LOT No Duplicate Warning Banner */}
       {(() => {
