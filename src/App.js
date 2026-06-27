@@ -3251,7 +3251,7 @@ export default function App() {
       {/* ── SETTINGS MODAL ── */}
       {showSettings && (
         <div style={{position:"fixed",top:0,left:0,width:"100%",height:"100%",background:"rgba(0,0,0,0.6)",zIndex:9998,display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <div style={{background:"#fff",borderRadius:12,padding:28,width:440,maxWidth:"95vw",boxShadow:"0 8px 32px rgba(0,0,0,0.3)"}}>
+          <div style={{background:"#fff",borderRadius:12,padding:24,width:520,maxWidth:"96vw",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 8px 32px rgba(0,0,0,0.3)"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
               <div style={{fontWeight:800,fontSize:18,color:"#1a2a4a"}}>⚙️ Settings</div>
               <button onClick={()=>setShowSettings(false)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#888"}}>✕</button>
@@ -3311,32 +3311,40 @@ export default function App() {
             </div>
 
             {/* Pesticide Master List */}
-            <div style={{marginBottom:20,background:"#fff8f0",borderRadius:8,padding:"14px 16px",border:"1px solid #f0a040"}}>
-              <div style={{fontWeight:700,fontSize:13,color:"#b35c00",marginBottom:4}}>🧪 Pesticide Price List</div>
-              <div style={{fontSize:12,color:"#888",marginBottom:10}}>Set price once — auto-fills when adding to farmer advances.</div>
+            <div style={{marginBottom:20,background:"#fff8f0",borderRadius:8,padding:"16px",border:"1.5px solid #f0a040"}}>
+              <div style={{fontWeight:700,fontSize:15,color:"#b35c00",marginBottom:4}}>🧪 Pesticide Price List</div>
+              <div style={{fontSize:12,color:"#888",marginBottom:12}}>Set price once — auto-fills when adding to farmer advances.</div>
+              {/* Column headers */}
+              {pesticideList.length > 0 && (
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 44px",gap:8,marginBottom:4}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"#b35c00",paddingLeft:2}}>Pesticide Name</div>
+                  <div style={{fontSize:11,fontWeight:700,color:"#b35c00",paddingLeft:2}}>Price ₹ per unit</div>
+                  <div></div>
+                </div>
+              )}
               {pesticideList.map((p,i) => (
-                <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1fr 32px",gap:6,marginBottom:6,alignItems:"center"}}>
+                <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1fr 44px",gap:8,marginBottom:10,alignItems:"center"}}>
                   <input
-                    placeholder="Pesticide name"
+                    placeholder="e.g. NuziMax 250ml"
                     value={p.name}
                     onChange={e=>{ const l=[...pesticideList]; l[i]={...l[i],name:e.target.value}; savePesticideList(l); }}
-                    style={{padding:"6px 8px",border:"1px solid #f0a040",borderRadius:5,fontSize:13}}
+                    style={{padding:"10px 12px",border:"1.5px solid #f0a040",borderRadius:6,fontSize:15,width:"100%",boxSizing:"border-box"}}
                   />
                   <input
-                    placeholder="Price ₹"
+                    placeholder="0"
                     type="number"
-                    value={p.price}
+                    value={p.price||""}
                     onChange={e=>{ const l=[...pesticideList]; l[i]={...l[i],price:parseFloat(e.target.value)||0}; savePesticideList(l); }}
-                    style={{padding:"6px 8px",border:"1px solid #f0a040",borderRadius:5,fontSize:13}}
+                    style={{padding:"10px 12px",border:"1.5px solid #f0a040",borderRadius:6,fontSize:15,width:"100%",boxSizing:"border-box"}}
                   />
                   <button onClick={()=>savePesticideList(pesticideList.filter((_,j)=>j!==i))}
-                    style={{background:"#fdecea",color:"#e74c3c",border:"1px solid #e74c3c",borderRadius:4,padding:"4px 6px",cursor:"pointer",fontSize:12}}>✕</button>
+                    style={{background:"#fdecea",color:"#e74c3c",border:"1.5px solid #e74c3c",borderRadius:6,padding:"10px",cursor:"pointer",fontSize:16,fontWeight:700,width:44,height:44}}>✕</button>
                 </div>
               ))}
               {pesticideList.length < 10 && (
                 <button onClick={()=>savePesticideList([...pesticideList,{name:"",price:0}])}
-                  style={{background:"#fff3e0",color:"#b35c00",border:"1px dashed #f0a040",borderRadius:4,padding:"5px 12px",fontSize:12,cursor:"pointer",marginTop:4}}>
-                  + Add Pesticide
+                  style={{background:"#fff3e0",color:"#b35c00",border:"2px dashed #f0a040",borderRadius:6,padding:"10px 16px",fontSize:14,fontWeight:700,cursor:"pointer",marginTop:4,width:"100%"}}>
+                  ＋ Add Pesticide
                 </button>
               )}
             </div>
