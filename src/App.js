@@ -701,7 +701,7 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
 }
 
 // ─── Farmer Form ────────────────────────────────────────────────
-function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVarietyRate, getVarietyType, farmers, subOrgs }) {
+function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVarietyRate, getVarietyType, farmers, subOrgs, pesticideList }) {
   const MAX_ADV = 10, MAX_CROP = 3;
   const inp = { style: { width: "100%", padding: "5px 8px", border: "1px solid #c8dfc8", borderRadius: 4, fontSize: 13, background: "#fafffe", boxSizing: "border-box" } };
 
@@ -779,6 +779,44 @@ function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVar
           </div>
         ))}
         <button disabled={advCount>=MAX_ADV} onClick={()=>onChange({...farmer,advances:[...(farmer.advances||[]),{date:new Date().toISOString().split("T")[0],amount:0,interestRate:24,note:""}]})} style={{background:advCount>=MAX_ADV?"#eee":"#e8f5e9",color:advCount>=MAX_ADV?"#999":"#2d6a2d",border:`1px dashed ${advCount>=MAX_ADV?"#ccc":"#2d6a2d"}`,borderRadius:4,padding:"4px 12px",cursor:advCount>=MAX_ADV?"not-allowed":"pointer",fontSize:12}}>{advCount>=MAX_ADV?"Max 10 reached":"+ Add Advance"}</button>
+        {pesticideList && pesticideList.filter(p=>p.name).length > 0 && advCount < MAX_ADV && (
+          <div style={{marginTop:8,background:"#fff8f0",border:"1px solid #f0a040",borderRadius:6,padding:"8px 10px"}}>
+            <div style={{fontSize:11,color:"#b35c00",fontWeight:700,marginBottom:6}}>🧪 Add Pesticide as Advance</div>
+            <div style={{display:"grid",gridTemplateColumns:"1.5fr 1fr auto",gap:6,alignItems:"end"}}>
+              <div>
+                <label style={{fontSize:10,color:"#888",display:"block",marginBottom:2}}>Pesticide</label>
+                <select id={`pest-sel-${farmer.id}`} style={{width:"100%",padding:"6px 8px",border:"1px solid #f0a040",borderRadius:4,fontSize:13,background:"#fffdf5"}}>
+                  <option value="">— Select —</option>
+                  {pesticideList.filter(p=>p.name).map((p,i)=>(
+                    <option key={i} value={i}>{p.name} (₹{p.price})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={{fontSize:10,color:"#888",display:"block",marginBottom:2}}>Qty</label>
+                <input id={`pest-qty-${farmer.id}`} type="number" min="1" defaultValue="1"
+                  style={{width:"100%",padding:"6px 8px",border:"1px solid #f0a040",borderRadius:4,fontSize:13}} />
+              </div>
+              <button onClick={()=>{
+                const sel = document.getElementById(`pest-sel-${farmer.id}`);
+                const qtyEl = document.getElementById(`pest-qty-${farmer.id}`);
+                const idx = parseInt(sel.value);
+                const qty = parseFloat(qtyEl.value)||1;
+                if (isNaN(idx)||sel.value==="") { alert("Please select a pesticide"); return; }
+                const p = pesticideList[idx];
+                const amount = p.price * qty;
+                const note = `${p.name} ×${qty}`;
+                onChange({...farmer, advances:[...(farmer.advances||[]),{
+                  date: new Date().toISOString().split("T")[0],
+                  amount, interestRate: 0, note
+                }]});
+                sel.value=""; qtyEl.value="1";
+              }} style={{background:"#e67e22",color:"#fff",border:"none",borderRadius:4,padding:"6px 14px",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                ➕ Add
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Crops */}
@@ -1056,6 +1094,13 @@ export default function App() {
     saveBillingHistory({...billingHistory,[key]:[...prev,entry]});
   };
   const [selectedPrintVarieties, setSelectedPrintVarieties] = useState([]); // empty = all varieties
+  const [pesticideList, setPesticideList] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("pesticide_list") || "[]"); } catch { return []; }
+  });
+  const savePesticideList = (list) => {
+    setPesticideList(list);
+    localStorage.setItem("pesticide_list", JSON.stringify(list));
+  };
   const [varietySettings, setVarietySettings] = useState(() => {
     try { const s = localStorage.getItem("variety_settings"); return s ? JSON.parse(s) : {}; } catch { return {}; }
   });
@@ -2107,7 +2152,7 @@ export default function App() {
                 <button key={t} onClick={()=>setTab(t)} style={{ padding:"7px 16px",border:"none",borderBottom:tab===t?"3px solid #2d6a2d":"3px solid transparent",background:"transparent",fontWeight:tab===t?700:400,color:tab===t?"#1a4a1a":"#555",cursor:"pointer",fontSize:13,marginBottom:-2 }}>{l}</button>
               ))}
             </div>
-            {tab==="form"&&currentFarmer&&<FarmerForm farmer={currentFarmer} index={selectedIdx} onChange={updated=>{const copy=[...farmers];copy[selectedIdx]=updated;updateFarmers(copy);}} onRemove={()=>deleteWithUndo("farmer", selectedIdx)} varietySettings={varietySettings} getVarietyRate={getVarietyRate} getVarietyType={getVarietyType} farmers={farmers} subOrgs={subOrgs} />}
+            {tab==="form"&&currentFarmer&&<FarmerForm farmer={currentFarmer} index={selectedIdx} onChange={updated=>{const copy=[...farmers];copy[selectedIdx]=updated;updateFarmers(copy);}} onRemove={()=>deleteWithUndo("farmer", selectedIdx)} varietySettings={varietySettings} getVarietyRate={getVarietyRate} getVarietyType={getVarietyType} farmers={farmers} subOrgs={subOrgs} pesticideList={pesticideList} />}
             {tab==="preview"&&currentFarmer&&(
               <div>
                 <button onClick={()=>printBill('bill-single',`bill_${currentFarmer.farmerNo||currentFarmer.name||'farmer'}`)} style={{ marginBottom:12,background:"#2d6a2d",color:"#fff",border:"none",borderRadius:5,padding:"7px 18px",cursor:"pointer",fontSize:13 }}>🖨 Print / Save as PDF</button>
@@ -3263,6 +3308,37 @@ export default function App() {
               }} style={{background:"#fff",color:"#2d5a8a",border:"1px solid #2d5a8a",borderRadius:5,padding:"6px 14px",fontSize:12,fontWeight:700,cursor:"pointer",marginLeft:8}}>
                 🔄 View & Restore
               </button>
+            </div>
+
+            {/* Pesticide Master List */}
+            <div style={{marginBottom:20,background:"#fff8f0",borderRadius:8,padding:"14px 16px",border:"1px solid #f0a040"}}>
+              <div style={{fontWeight:700,fontSize:13,color:"#b35c00",marginBottom:4}}>🧪 Pesticide Price List</div>
+              <div style={{fontSize:12,color:"#888",marginBottom:10}}>Set price once — auto-fills when adding to farmer advances.</div>
+              {pesticideList.map((p,i) => (
+                <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1fr 32px",gap:6,marginBottom:6,alignItems:"center"}}>
+                  <input
+                    placeholder="Pesticide name"
+                    value={p.name}
+                    onChange={e=>{ const l=[...pesticideList]; l[i]={...l[i],name:e.target.value}; savePesticideList(l); }}
+                    style={{padding:"6px 8px",border:"1px solid #f0a040",borderRadius:5,fontSize:13}}
+                  />
+                  <input
+                    placeholder="Price ₹"
+                    type="number"
+                    value={p.price}
+                    onChange={e=>{ const l=[...pesticideList]; l[i]={...l[i],price:parseFloat(e.target.value)||0}; savePesticideList(l); }}
+                    style={{padding:"6px 8px",border:"1px solid #f0a040",borderRadius:5,fontSize:13}}
+                  />
+                  <button onClick={()=>savePesticideList(pesticideList.filter((_,j)=>j!==i))}
+                    style={{background:"#fdecea",color:"#e74c3c",border:"1px solid #e74c3c",borderRadius:4,padding:"4px 6px",cursor:"pointer",fontSize:12}}>✕</button>
+                </div>
+              ))}
+              {pesticideList.length < 10 && (
+                <button onClick={()=>savePesticideList([...pesticideList,{name:"",price:0}])}
+                  style={{background:"#fff3e0",color:"#b35c00",border:"1px dashed #f0a040",borderRadius:4,padding:"5px 12px",fontSize:12,cursor:"pointer",marginTop:4}}>
+                  + Add Pesticide
+                </button>
+              )}
             </div>
 
             <button onClick={()=>setShowSettings(false)} style={{width:"100%",background:"#1a2a4a",color:"#fff",border:"none",borderRadius:6,padding:"10px",fontWeight:700,cursor:"pointer",fontSize:14}}>
