@@ -782,7 +782,13 @@ function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVar
         {pesticideList && pesticideList.filter(p=>p.name).length > 0 && advCount < MAX_ADV && (
           <div style={{marginTop:8,background:"#fff8f0",border:"1px solid #f0a040",borderRadius:6,padding:"8px 10px"}}>
             <div style={{fontSize:11,color:"#b35c00",fontWeight:700,marginBottom:6}}>🧪 Add Pesticide as Advance</div>
-            <div style={{display:"grid",gridTemplateColumns:"1.5fr 1fr auto",gap:6,alignItems:"end"}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1.5fr 0.7fr auto",gap:6,alignItems:"end"}}>
+              <div>
+                <label style={{fontSize:10,color:"#888",display:"block",marginBottom:2}}>Date</label>
+                <input id={`pest-date-${farmer.id}`} type="date"
+                  defaultValue={new Date().toISOString().split("T")[0]}
+                  style={{width:"100%",padding:"6px 8px",border:"1px solid #f0a040",borderRadius:4,fontSize:13}} />
+              </div>
               <div>
                 <label style={{fontSize:10,color:"#888",display:"block",marginBottom:2}}>Pesticide</label>
                 <select id={`pest-sel-${farmer.id}`} style={{width:"100%",padding:"6px 8px",border:"1px solid #f0a040",borderRadius:4,fontSize:13,background:"#fffdf5"}}>
@@ -800,18 +806,19 @@ function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVar
               <button onClick={()=>{
                 const sel = document.getElementById(`pest-sel-${farmer.id}`);
                 const qtyEl = document.getElementById(`pest-qty-${farmer.id}`);
+                const dateEl = document.getElementById(`pest-date-${farmer.id}`);
                 const idx = parseInt(sel.value);
                 const qty = parseFloat(qtyEl.value)||1;
+                const date = dateEl.value || new Date().toISOString().split("T")[0];
                 if (isNaN(idx)||sel.value==="") { alert("Please select a pesticide"); return; }
                 const p = pesticideList[idx];
                 const amount = p.price * qty;
                 const note = `${p.name} ×${qty}`;
                 onChange({...farmer, advances:[...(farmer.advances||[]),{
-                  date: new Date().toISOString().split("T")[0],
-                  amount, interestRate: 0, note
+                  date, amount, interestRate: 0, note
                 }]});
                 sel.value=""; qtyEl.value="1";
-              }} style={{background:"#e67e22",color:"#fff",border:"none",borderRadius:4,padding:"6px 14px",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+              }} style={{background:"#e67e22",color:"#fff",border:"none",borderRadius:4,padding:"6px 14px",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",marginTop:16}}>
                 ➕ Add
               </button>
             </div>
@@ -2143,10 +2150,7 @@ export default function App() {
 
           {/* Main Area */}
           <div style={{ flex:1,overflowY:"auto",padding:"14px 16px" }}>
-            <div style={{ background:"#fff",borderRadius:8,padding:"7px 14px",marginBottom:12,border:"1px solid #c8dfc8",display:"flex",alignItems:"center",gap:8 }}>
-              <span style={{ fontSize:12,color:"#555" }}>Bill Date:</span>
-              <span style={{ padding:"2px 12px",border:"1px solid #c8dfc8",borderRadius:4,fontSize:13,background:"#f0f7f0",color:"#1a4a1a",fontWeight:700 }}>📅 01 July 2026 <span style={{ fontSize:10,color:"#777",fontWeight:400 }}>(fixed)</span></span>
-            </div>
+
             <div style={{ display:"flex",borderBottom:"2px solid #b8d8b8",marginBottom:14 }}>
               {[["form","✏️ Edit"],["preview","👁 Preview"],["all","📋 All Bills"]].map(([t,l]) => (
                 <button key={t} onClick={()=>setTab(t)} style={{ padding:"7px 16px",border:"none",borderBottom:tab===t?"3px solid #2d6a2d":"3px solid transparent",background:"transparent",fontWeight:tab===t?700:400,color:tab===t?"#1a4a1a":"#555",cursor:"pointer",fontSize:13,marginBottom:-2 }}>{l}</button>
