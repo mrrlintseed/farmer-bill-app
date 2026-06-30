@@ -3149,6 +3149,65 @@ export default function App() {
                 soCount: soList.length, soGrowerCount, soCropVal, soQty };
             });
 
+            const fmtN = n => `₹${Math.abs(Math.round(n)).toLocaleString("en-IN")}`;
+
+            const printVarietyPaySummary = () => {
+              const rows = varStats.map(v => `<tr>
+                <td style="padding:6px 8px;border:1px solid #ccc;">${v.variety}</td>
+                <td style="padding:6px 8px;border:1px solid #ccc;text-align:center;">${v.paid?'✅ Paid':'⏳ Pending'}</td>
+                <td style="padding:6px 8px;border:1px solid #ccc;text-align:center;">${v.selectedType}</td>
+                <td style="padding:6px 8px;border:1px solid #ccc;text-align:right;">₹${v.globalRate||v.detectedRate||0}</td>
+                <td style="padding:6px 8px;border:1px solid #ccc;text-align:center;">${v.farmerCount}</td>
+                <td style="padding:6px 8px;border:1px solid #ccc;text-align:right;">${v.totalQty.toLocaleString('en-IN')}</td>
+                <td style="padding:6px 8px;border:1px solid #ccc;text-align:right;">${fmtN(v.totalCropVal)}</td>
+                <td style="padding:6px 8px;border:1px solid #ccc;text-align:right;color:#1a7a1a;">${fmtN(v.balPayTotal)}</td>
+                <td style="padding:6px 8px;border:1px solid #ccc;text-align:right;color:#b30000;">${fmtN(v.balDueTotal)}</td>
+                <td style="padding:6px 8px;border:1px solid #ccc;text-align:center;">${fmtDate(v.billDate)}</td>
+                <td style="padding:6px 8px;border:1px solid #ccc;text-align:center;">${v.soCount||0}</td>
+                <td style="padding:6px 8px;border:1px solid #ccc;text-align:right;">${(v.soQty||0).toLocaleString('en-IN')}</td>
+                <td style="padding:6px 8px;border:1px solid #ccc;text-align:right;">${fmtN(v.soCropVal||0)}</td>
+              </tr>`).join("");
+
+              const grandQty = varStats.reduce((s,v)=>s+v.totalQty+(v.soQty||0),0);
+              const grandPay = varStats.reduce((s,v)=>s+v.balPayTotal,0);
+              const grandDue = varStats.reduce((s,v)=>s+v.balDueTotal,0);
+
+              const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Variety Payment Summary</title>
+                <style>
+                  body{font-family:Georgia,serif;padding:20px;color:#222;}
+                  h2{color:#1a4a1a;margin-bottom:2px;}
+                  table{border-collapse:collapse;width:100%;margin-top:14px;font-size:12px;}
+                  th{background:#1a4a1a;color:#fff;padding:7px 8px;text-align:left;border:1px solid #ccc;font-size:11px;}
+                  .total-row td{font-weight:800;border-top:2px solid #1a4a1a;background:#f0f7f0;}
+                  @media print{@page{margin:8mm;size:A4 landscape;}}
+                </style></head><body>
+                <h2>🌾 Variety Payment Summary</h2>
+                <div style="font-size:13px;color:#555;margin-bottom:6px;">Generated: ${fmtDate(new Date().toISOString().split("T")[0])} | Total Varieties: ${varStats.length}</div>
+                <table>
+                  <thead><tr>
+                    <th>Variety</th><th>Status</th><th>Type</th><th>Rate ₹</th>
+                    <th>Farmers</th><th>Qty</th><th>Crop Value</th><th>Bal Pay</th><th>Bal Due</th><th>Bill Date</th>
+                    <th>Sub-Orgs</th><th>SO Qty</th><th>SO Value</th>
+                  </tr></thead>
+                  <tbody>${rows}
+                    <tr class="total-row">
+                      <td colspan="5">GRAND TOTAL</td>
+                      <td style="text-align:right;padding:7px 8px;border:1px solid #ccc;">${grandQty.toLocaleString('en-IN')}</td>
+                      <td></td>
+                      <td style="text-align:right;padding:7px 8px;border:1px solid #ccc;color:#1a7a1a;">${fmtN(grandPay)}</td>
+                      <td style="text-align:right;padding:7px 8px;border:1px solid #ccc;color:#b30000;">${fmtN(grandDue)}</td>
+                      <td colspan="4"></td>
+                    </tr>
+                  </tbody>
+                </table>
+                </body></html>`;
+              const w = window.open("", "_blank");
+              w.document.write(html);
+              w.document.close();
+              setTimeout(()=>w.print(), 400);
+            };
+
+
             // Summary totals
             const paid = varStats.filter(v=>v.paid);
             const pend = varStats.filter(v=>!v.paid);
@@ -3163,6 +3222,14 @@ export default function App() {
 
             return (
               <div style={{display:"flex",flexDirection:"column",gap:14}}>
+
+                {/* ── Print Button ── */}
+                <div style={{display:"flex",justifyContent:"flex-end"}}>
+                  <button onClick={printVarietyPaySummary}
+                    style={{background:"#1a4a1a",color:"#fff",border:"none",borderRadius:6,padding:"9px 16px",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                    🖨️ Print Summary
+                  </button>
+                </div>
 
                 {/* ── Summary Cards ── */}
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:10}}>
