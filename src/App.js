@@ -1073,6 +1073,7 @@ export default function App() {
   const [subOrgs, setSubOrgs] = useState([]);
   const [mode, setMode] = useState("farmers");
   const [selectedVillage, setSelectedVillage] = useState(null);
+  const [selectedCareOf, setSelectedCareOf] = useState(null);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [tab, setTab] = useState("form");
   const [saveStatus, setSaveStatus] = useState("idle");
@@ -1184,6 +1185,23 @@ export default function App() {
       if (c) return c.cropType||"KMS";
     }
     return "KMS";
+  };
+  // Helper: calculate a farmer's net balance (shared logic used across tabs)
+  const getFarmerBalance = (f) => {
+    let cropVal=0, found=0, trans=0;
+    (f.crops||[]).forEach(c=>{
+      const qty=parseFloat(c.quantity)||0;
+      const vRate=(c.rateOverride===true)?(parseFloat(c.ratePerUnit)||0):(getVarietyRate(c.variety)||parseFloat(c.ratePerUnit)||0);
+      const paid=isVarietyPaid(c.variety);
+      if(c.result==="Pass"&&paid) cropVal+=qty*vRate;
+      found+=(parseFloat(c.area)||0)*1000;
+      trans+=qty;
+    });
+    const paidDates=(f.crops||[]).filter(c=>c.result==="Pass"&&isVarietyPaid(c.variety)).map(c=>getVarietyBillDate(c.variety));
+    const billDate=paidDates.length>0?paidDates.reduce((a,b)=>a<b?a:b):BILL_DATE;
+    const advWI=(f.advances||[]).reduce((s,a)=>{const bd=a.tillDate||billDate;const {interest}=calcInterest(a.amount,a.interestRate,a.date,bd);return s+a.amount+interest;},0);
+    const jamWI=(f.jammaEnabled?f.jammaEntries||[]:[]).reduce((s,j)=>{const bd=j.tillDate||billDate;const {interest}=calcInterest(parseFloat(j.amount)||0,parseFloat(j.interestRate)||0,j.date||BILL_DATE,bd);return s+(parseFloat(j.amount)||0)+interest;},0);
+    return cropVal-advWI+jamWI-found-trans;
   };
   // Helper: detect default rate from farmers (used as placeholder)
   const getVarietyInfo = (variety) => {
@@ -1391,7 +1409,7 @@ export default function App() {
 
   const downloadTemplate = () => {
     const data = [
-      { "Farmer No":"001","Farmer Name":"Ravi Kumar","Father Name":"Suresh Kumar","Village":"Nandyal",
+      { "Farmer No":"001","Farmer Name":"Ravi Kumar","Father Name":"Suresh Kumar","Village":"Nandyal","C/o (optional)":"",
         "Adv1 Date":"2025-07-15","Adv1 Amount":50000,"Adv1 Interest%":24,"Adv1 Note":"",
         "Adv2 Date":"","Adv2 Amount":"","Adv2 Interest%":"","Adv2 Note":"",
         "Crop1 Variety":"NC-4605","Crop1 LOT No":"5579","Crop1 Area":"1","Crop1 Qty":410,"Crop1 Type":"GMS","Crop1 Rate":400,"Crop1 Result":"Pass","Crop1 Note":"",
@@ -1417,7 +1435,7 @@ export default function App() {
     };
 
     // Build headers
-    const headers = ["Farmer No","Farmer Name","Father Name","Village","Bill Date"];
+    const headers = ["Farmer No","Farmer Name","Father Name","Village","C/o","Bill Date"];
     for (let i=1;i<=maxAdv;i++)  headers.push(`Adv${i} Date`,`Adv${i} Amount`,`Adv${i} Days`,`Adv${i} Interest`,`Adv${i} Total`,`Adv${i} Note`);
     for (let i=1;i<=maxCrop;i++) headers.push(`Crop${i} Variety`,`Crop${i} LOT No`,`Crop${i} Qty`,`Crop${i} Type`,`Crop${i} Rate`,`Crop${i} Result`,`Crop${i} Value`,`Crop${i} Note`);
     if (maxJam>0) {
@@ -1432,6 +1450,7 @@ export default function App() {
       row["Farmer Name"] = f.name||"";
       row["Father Name"] = f.fatherName||"";
       row["Village"]     = f.village||"";
+      row["C/o"]         = f.careOf||"";
       row["Bill Date"]   = fmtDate(billDate);
 
       // Calculate advances with interest
@@ -1906,7 +1925,7 @@ export default function App() {
               const amount=getNum(row[hIdx[`Jamma${i} Amount`]??-1]);
               if (!date && !amount) break;
               jammaEntries.push({ date:date||BILL_DATE, amount, interestRate:getNum(row[hIdx[`Jamma${i} Interest%`]??-1])||0, note:get(row,`Jamma${i} Note`) });
-            }            imported.push({ id:Date.now()+ri, farmerNo:get(row,"Farmer No"), name:farmerName, fatherName:get(row,"Father Name"), village:get(row,"Village"), advances, crops, jammaEnabled, jammaEntries, comment:get(row,"Farmer Comment") });
+            }            imported.push({ id:Date.now()+ri, farmerNo:get(row,"Farmer No"), name:farmerName, fatherName:get(row,"Father Name"), village:get(row,"Village"), careOf:get(row,"C/o (optional)")||get(row,"C/o")||"", advances, crops, jammaEnabled, jammaEntries, comment:get(row,"Farmer Comment") });
           }
         } else {
           // ── OLD FORMAT: multi-row per farmer ──
@@ -1915,7 +1934,7 @@ export default function App() {
             const row=allRows[ri]; if (!row||row.length===0) continue;
             const farmerName=get(row,"Farmer Name");
             if (farmerName) {
-              cur={ id:Date.now()+ri, farmerNo:get(row,"Farmer No"), name:farmerName, fatherName:get(row,"Father Name"), village:get(row,"Village"), advances:[], crops:[], jammaEnabled:get(row,"Jamma Enabled")==="Yes", jammaEntries:[] };
+              cur={ id:Date.now()+ri, farmerNo:get(row,"Farmer No"), name:farmerName, fatherName:get(row,"Father Name"), village:get(row,"Village"), careOf:get(row,"C/o")||"", advances:[], crops:[], jammaEnabled:get(row,"Jamma Enabled")==="Yes", jammaEntries:[] };
               imported.push(cur);
             }
             if (!cur) continue;
@@ -1971,7 +1990,7 @@ export default function App() {
             <div style={{ fontSize:11,opacity:0.8 }}>రైతు పంట బిల్లు జనరేటర్</div>
           </div>
           <div style={{ display:"flex",background:"rgba(0,0,0,0.25)",borderRadius:8,padding:3,gap:2,flexWrap:"wrap" }} className="mobile-nav">
-            {[["farmers","👨‍🌾 Farmers"],["suborgs","🏢 Sub-Orgs"],["dashboard","📊 Dashboard"],["variety","🌾 Variety Pay"]].map(([m,l]) => (
+            {[["farmers","👨‍🌾 Farmers"],["suborgs","🏢 Sub-Orgs"],["careof","🤝 C/o Groups"],["dashboard","📊 Dashboard"],["variety","🌾 Variety Pay"]].map(([m,l]) => (
               <button key={m} onClick={()=>setMode(m)} style={{ padding:"5px 12px",borderRadius:6,border:"none",cursor:"pointer",fontWeight:700,fontSize:12,background:mode===m?"#fff":"transparent",color:mode===m?"#1a4a1a":"#ccc" }}>{l}</button>
             ))}
           </div>
@@ -2774,6 +2793,140 @@ export default function App() {
       )}
 
       {/* ── DASHBOARD MODE ── */}
+      {mode==="careof"&&(()=>{
+        const allF = farmers||[];
+        const careOfNames = [...new Set(allF.map(f=>(f.careOf||"").trim()).filter(Boolean))].sort();
+
+        if (careOfNames.length === 0) {
+          return (
+            <div style={{ padding:40, textAlign:"center", color:"#888" }}>
+              <div style={{ fontSize:40, marginBottom:10 }}>🤝</div>
+              <div style={{ fontSize:16, fontWeight:700, marginBottom:6 }}>No C/o groups yet</div>
+              <div style={{ fontSize:13 }}>Add a "C/o" name to any farmer in the Farmers tab to see them grouped here.</div>
+            </div>
+          );
+        }
+
+        const printCareOfSummary = (name, farmersList) => {
+          const rows = farmersList.map(f => {
+            const bal = getFarmerBalance(f);
+            return `<tr>
+              <td style="padding:6px 10px;border:1px solid #ccc;">${f.farmerNo||""}</td>
+              <td style="padding:6px 10px;border:1px solid #ccc;">${f.name||""}</td>
+              <td style="padding:6px 10px;border:1px solid #ccc;">${f.village||""}</td>
+              <td style="padding:6px 10px;border:1px solid #ccc;text-align:right;font-weight:700;color:${bal>=0?'#1a7a1a':'#b30000'}">₹${Math.abs(Math.round(bal)).toLocaleString('en-IN')} ${bal>=0?'(Pay)':'(Due)'}</td>
+            </tr>`;
+          }).join("");
+          const total = farmersList.reduce((s,f)=>s+getFarmerBalance(f),0);
+          const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>C/o Summary - ${name}</title>
+            <style>
+              body{font-family:Georgia,serif;padding:20px;color:#222;}
+              h2{color:#1a4a1a;margin-bottom:2px;}
+              table{border-collapse:collapse;width:100%;margin-top:14px;}
+              th{background:#1a4a1a;color:#fff;padding:8px 10px;text-align:left;border:1px solid #ccc;}
+              .total-row td{font-weight:800;font-size:15px;border-top:2px solid #1a4a1a;background:#f0f7f0;}
+              @media print{@page{margin:10mm;size:A4 portrait;}}
+            </style></head><body>
+            <h2>C/o Settlement Summary</h2>
+            <div style="font-size:15px;margin-bottom:4px;"><strong>C/o:</strong> ${name}</div>
+            <div style="font-size:13px;color:#555;">Bill Date: ${fmtDate(BILL_DATE)} | Farmers: ${farmersList.length}</div>
+            <table>
+              <thead><tr><th>Farmer No</th><th>Name</th><th>Village</th><th style="text-align:right;">Balance</th></tr></thead>
+              <tbody>${rows}
+                <tr class="total-row"><td colspan="3">TOTAL</td><td style="text-align:right;padding:8px 10px;border:1px solid #ccc;">₹${Math.abs(Math.round(total)).toLocaleString('en-IN')} ${total>=0?'(Pay to C/o)':'(Due from C/o)'}</td></tr>
+              </tbody>
+            </table>
+            </body></html>`;
+          const w = window.open("", "_blank");
+          w.document.write(html);
+          w.document.close();
+          setTimeout(()=>w.print(), 400);
+        };
+
+        return (
+          <div style={{ display:"flex", height:"calc(100vh - 64px)" }}>
+            <div style={{ width:240, minWidth:200, background:"#1a4a1a", color:"#fff", overflowY:"auto" }} className="mobile-panel">
+              <div style={{ padding:"8px 12px", fontSize:11, fontWeight:700, letterSpacing:1, color:"#8bc88b", borderBottom:"1px solid #2d5a2d" }}>
+                C/o PERSONS ({careOfNames.length})
+              </div>
+              {careOfNames.map(name => {
+                const count = allF.filter(f=>(f.careOf||"").trim()===name).length;
+                const isSel = selectedCareOf === name;
+                return (
+                  <div key={name} onClick={()=>setSelectedCareOf(name)}
+                    style={{ padding:"10px 12px", cursor:"pointer", background:isSel?"#2d6a2d":"transparent", borderLeft:isSel?"3px solid #7dd87d":"3px solid transparent", borderBottom:"1px solid #1a3a1a" }}>
+                    <div style={{ fontSize:13, fontWeight:700 }}>🤝 {name}</div>
+                    <div style={{ fontSize:11, color:"#8bc88b" }}>{count} farmer{count!==1?"s":""}</div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ flex:1, overflowY:"auto", padding:"16px 20px" }}>
+              {!selectedCareOf ? (
+                <div style={{ padding:40, textAlign:"center", color:"#888" }}>
+                  <div style={{ fontSize:34, marginBottom:8 }}>👈</div>
+                  <div>Select a C/o person from the list to see their farmers and combined total.</div>
+                </div>
+              ) : (() => {
+                const farmersList = allF.filter(f=>(f.careOf||"").trim()===selectedCareOf);
+                const farmersWithBal = farmersList.map(f=>({f, balance:getFarmerBalance(f)}));
+                const total = farmersWithBal.reduce((s,x)=>s+x.balance,0);
+                return (
+                  <div>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10, marginBottom:16 }}>
+                      <div>
+                        <div style={{ fontSize:20, fontWeight:800, color:"#1a4a1a" }}>🤝 {selectedCareOf}</div>
+                        <div style={{ fontSize:13, color:"#666" }}>{farmersList.length} farmer{farmersList.length!==1?"s":""} across {[...new Set(farmersList.map(f=>f.village).filter(Boolean))].length} village(s)</div>
+                      </div>
+                      <button onClick={()=>printCareOfSummary(selectedCareOf, farmersList)}
+                        style={{ background:"#1a4a1a", color:"#fff", border:"none", borderRadius:6, padding:"10px 18px", fontWeight:700, fontSize:13, cursor:"pointer" }}>
+                        🖨️ Print Summary
+                      </button>
+                    </div>
+
+                    <div style={{ background:total>=0?"#e8f5e9":"#fdecea", border:`2px solid ${total>=0?"#2d6a2d":"#e74c3c"}`, borderRadius:8, padding:"14px 18px", marginBottom:18, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                      <span style={{ fontWeight:700, fontSize:14, color:total>=0?"#1a4a1a":"#b30000" }}>Combined Total</span>
+                      <span style={{ fontWeight:800, fontSize:22, color:total>=0?"#1a7a1a":"#b30000" }}>
+                        ₹{Math.abs(Math.round(total)).toLocaleString('en-IN')} {total>=0?"(Pay to C/o)":"(Due from C/o)"}
+                      </span>
+                    </div>
+
+                    <div style={{ background:"#fff", border:"1px solid #c8dfc8", borderRadius:8, overflow:"hidden" }}>
+                      <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
+                        <thead>
+                          <tr style={{ background:"#f0f7f0" }}>
+                            <th style={{ padding:"8px 10px", textAlign:"left", borderBottom:"1px solid #c8dfc8" }}>Farmer No</th>
+                            <th style={{ padding:"8px 10px", textAlign:"left", borderBottom:"1px solid #c8dfc8" }}>Name</th>
+                            <th style={{ padding:"8px 10px", textAlign:"left", borderBottom:"1px solid #c8dfc8" }}>Village</th>
+                            <th style={{ padding:"8px 10px", textAlign:"right", borderBottom:"1px solid #c8dfc8" }}>Balance</th>
+                            <th style={{ padding:"8px 10px", textAlign:"center", borderBottom:"1px solid #c8dfc8" }}>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {farmersWithBal.map(({f,balance}) => (
+                            <tr key={f.id} style={{ cursor:"pointer" }} onClick={()=>{ const idx=farmers.findIndex(x=>x.id===f.id); setSelectedIdx(idx); setMode("farmers"); setTab("preview"); }}>
+                              <td style={{ padding:"8px 10px", borderBottom:"1px solid #eee" }}>{f.farmerNo||"—"}</td>
+                              <td style={{ padding:"8px 10px", borderBottom:"1px solid #eee", fontWeight:600 }}>{f.name||"—"}</td>
+                              <td style={{ padding:"8px 10px", borderBottom:"1px solid #eee" }}>{f.village||"—"}</td>
+                              <td style={{ padding:"8px 10px", borderBottom:"1px solid #eee", textAlign:"right", fontWeight:700, color:balance>=0?"#1a7a1a":"#b30000" }}>
+                                ₹{Math.abs(Math.round(balance)).toLocaleString('en-IN')} {balance>=0?"(Pay)":"(Due)"}
+                              </td>
+                              <td style={{ padding:"8px 10px", borderBottom:"1px solid #eee", textAlign:"center" }}>
+                                {f.billingDone ? <span style={{ color:"#1a7a1a" }}>✔ Billed</span> : <span style={{ color:"#b35c00" }}>⏳ Pending</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        );
+      })()}
+
       {mode==="dashboard"&&(()=>{
         const allF=farmers||[];
         const fStats=allF.map(f=>{
