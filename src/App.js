@@ -144,10 +144,11 @@ function BillPreview({ farmer, varietySettings, getVarietyBillDate, isVarietyPai
             <span>FARMER DETAILS | రైతు వివరాలు</span>
             {farmer.farmerNo && <span style={{ background: "#1a4a1a", color: "#fff", padding: "2px 14px", borderRadius: 20, fontSize: 13, fontWeight: 800 }}>No: {farmer.farmerNo}</span>}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "5px 14px", fontSize: 13 }}>
+          <div style={{ display: "grid", gridTemplateColumns: farmer.careOf ? "1fr 1fr 1fr 1fr" : "1fr 1fr 1fr", gap: "5px 14px", fontSize: 13 }}>
             <div><span style={{ color: "#555" }}>Name: </span><strong>{farmer.name}</strong></div>
             <div><span style={{ color: "#555" }}>Father: </span><strong>{farmer.fatherName}</strong></div>
             <div><span style={{ color: "#555" }}>Village: </span><strong>{farmer.village}</strong></div>
+            {farmer.careOf && <div><span style={{ color: "#555" }}>C/o: </span><strong>{farmer.careOf}</strong></div>}
           </div>
         </div>
 
@@ -734,6 +735,10 @@ function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVar
           <div key={f}><label style={{ fontSize: 11, color: "#555", display: "block", marginBottom: 2 }}>{l}</label><input {...inp} value={farmer[f]||""} onChange={e => onChange({...farmer,[f]:e.target.value})} /></div>
         ))}
       </div>
+      <div style={{ marginBottom: 8 }}>
+        <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 2 }}>C/o (Care of) — optional, only if someone else is responsible</label>
+        <input {...inp} value={farmer.careOf||""} onChange={e => onChange({...farmer,careOf:e.target.value})} placeholder="e.g. Ramesh (in-charge)" style={{...inp.style, maxWidth:320}} />
+      </div>
       <div style={{ marginBottom: 12 }}>
         <input
           placeholder="📝 Comment for this farmer's bill (optional) — e.g. Quality was low, Need to pay the due, Someone else will pay..."
@@ -1248,7 +1253,7 @@ export default function App() {
   };
 
   const addFarmer = (village = "") => {
-    const newF = { id: Date.now(), farmerNo: "", name: "", fatherName: "", village, advances: [], crops: [], jammaEnabled: false, jammaEntries: [] };
+    const newF = { id: Date.now(), farmerNo: "", name: "", fatherName: "", village, careOf: "", advances: [], crops: [], jammaEnabled: false, jammaEntries: [] };
     const updated = [...(farmers || []), newF];
     updateFarmers(updated); setSelectedIdx(updated.length - 1); setTab("form");
   };
@@ -2124,6 +2129,7 @@ export default function App() {
                             <span style={{ fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{f.name||`Farmer #${f._idx+1}`}</span>
                           </div>
                           {f.fatherName&&<div style={{ fontSize:10,color:"#8bc88b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>S/o {f.fatherName}</div>}
+                          {f.careOf&&<div style={{ fontSize:10,color:"#ffb74d",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>C/o {f.careOf}</div>}
                           {f.billingDone&&<div style={{ fontSize:9,color:"#7dd87d" }}>✔ Billed</div>}
                         </div>
                       ))}
