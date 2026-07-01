@@ -385,8 +385,9 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
       </div>
       <div style={{ padding: "14px 20px" }}>
         <div style={{ background: "#f0f5ff", borderRadius: 6, padding: "10px 14px", marginBottom: 12, border: "1px solid #b0c8e0" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px 14px", fontSize: 13 }}>
+          <div style={{ display: "grid", gridTemplateColumns: so.fatherName ? "1fr 1fr 1fr" : "1fr 1fr", gap: "5px 14px", fontSize: 13 }}>
             <div><span style={{ color: "#555" }}>Sub-Organizer: </span><strong>{so.name}</strong></div>
+            {so.fatherName && <div><span style={{ color: "#555" }}>Father: </span><strong>{so.fatherName}</strong></div>}
             <div><span style={{ color: "#555" }}>Village (MSP): </span><strong>{so.village || "MSP"}</strong></div>
           </div>
         </div>
@@ -1276,7 +1277,7 @@ export default function App() {
     updateFarmers(updated); setSelectedIdx(updated.length - 1); setTab("form");
   };
   const addSubOrg = () => {
-    const newS = { id: Date.now(), accNo: "", name: "", village: "", advances: [], growers: [] };
+    const newS = { id: Date.now(), accNo: "", name: "", fatherName: "", village: "", advances: [], growers: [] };
     const updated = [...subOrgs, newS];
     updateSubOrgs(updated); setSelectedSubOrgIdx(updated.length - 1); setSubOrgTab("form");
   };
@@ -1291,22 +1292,22 @@ export default function App() {
   const downloadSubOrgTemplate = () => {
     // GROWERS sheet — one row per grower, simple to fill
     const growerRows = [
-      { "Acc No":"695","Sub-Org Name":"D K Ramudu","Village":"MSP","S.No":1,"LOT No":"11069","Grower Name":"Mabbu Narasimhulu","Father Name":"Santenna","Grower Village":"Maddelabanda","Variety":"Royal-999","Packets":385,"Result":"Pass","Type":"KMS","Rate":390,"Note":"" },
-      { "Acc No":"695","Sub-Org Name":"D K Ramudu","Village":"MSP","S.No":2,"LOT No":"514822","Grower Name":"Gopi Nayak","Father Name":"Lakshman Nayak","Grower Village":"Chinna Thanda","Variety":"Rasi-202","Packets":124,"Result":"Pass","Type":"KMS","Rate":500,"Note":"" },
+      { "Acc No":"695","Sub-Org Name":"D K Ramudu","S-Org Father Name":"","Village":"MSP","S.No":1,"LOT No":"11069","Grower Name":"Mabbu Narasimhulu","Father Name":"Santenna","Grower Village":"Maddelabanda","Variety":"Royal-999","Packets":385,"Result":"Pass","Note":"" },
+      { "Acc No":"695","Sub-Org Name":"D K Ramudu","S-Org Father Name":"","Village":"MSP","S.No":2,"LOT No":"514822","Grower Name":"Gopi Nayak","Father Name":"Lakshman Nayak","Grower Village":"Chinna Thanda","Variety":"Rasi-202","Packets":124,"Result":"Pass","Note":"" },
     ];
     // ADVANCES sheet — one row per advance
     const advRows = [
-      { "Acc No":"695","Date":"2025-07-31","Amount":200000,"Interest %":24,"Note":"" },
-      { "Acc No":"695","Date":"2025-08-19","Amount":80000,"Interest %":24,"Note":"" },
+      { "Acc No":"695","Sub-Org Name":"D K Ramudu","Village":"MSP","Date":"2025-07-31","Amount":200000,"Interest %":24,"Note":"" },
+      { "Acc No":"695","Sub-Org Name":"D K Ramudu","Village":"MSP","Date":"2025-08-19","Amount":80000,"Interest %":24,"Note":"" },
     ];
     // FOUNDATION sheet — one row per variety
     const foundRows = [
-      { "Acc No":"695","Variety":"Royal-999","Area (Ac)":10 },
-      { "Acc No":"695","Variety":"Rasi-202","Area (Ac)":8 },
+      { "Acc No":"695","Sub-Org Name":"D K Ramudu","Village":"MSP","Variety":"Royal-999","Area (Ac)":10 },
+      { "Acc No":"695","Sub-Org Name":"D K Ramudu","Village":"MSP","Variety":"Rasi-202","Area (Ac)":8 },
     ];
     // SUB-ORG INFO sheet — for the bill comment (optional)
     const infoRows = [
-      { "Acc No":"695","Sub-Org Comment (optional)":"" },
+      { "Acc No":"695","Sub-Org Name":"D K Ramudu","S-Org Father Name":"","Village":"MSP","Sub-Org Comment (optional)":"" },
     ];
 
     const wb = XLSX.utils.book_new();
@@ -1354,7 +1355,7 @@ export default function App() {
           if (!subOrgMap[accNo]) {
             subOrgMap[accNo] = {
               id: Date.now()+Math.random(),
-              accNo, name: clean(r["Sub-Org Name"]), village: clean(r["Village"]),
+              accNo, name: clean(r["Sub-Org Name"]), fatherName: clean(r["S-Org Father Name"])||"", village: clean(r["Village"]),
               advances: [], growers: [], foundationSeeds: [], jammaEntries: [], comment: "",
             };
           }
@@ -1362,8 +1363,8 @@ export default function App() {
             sNo: clean(r["S.No"]), lotNo: clean(r["LOT No"]), name: clean(r["Grower Name"]),
             fatherName: clean(r["Father Name"]), village: clean(r["Grower Village"]),
             variety: clean(r["Variety"]), packets: getNum(r["Packets"]),
-            result: clean(r["Result"])==="Pass"?"Pass":"Fail", type: clean(r["Type"])||"KMS",
-            rate: getNum(r["Rate"]), note: clean(r["Note"]),
+            result: clean(r["Result"])==="Pass"?"Pass":"Fail", type: "KMS",
+            rate: 0, note: clean(r["Note"]),
           });
         });
 
@@ -1392,6 +1393,8 @@ export default function App() {
           if (!accNo || !subOrgMap[accNo]) return;
           const comment = clean(r["Sub-Org Comment (optional)"]);
           if (comment) subOrgMap[accNo].comment = comment;
+          const soFather = clean(r["S-Org Father Name"]);
+          if (soFather) subOrgMap[accNo].fatherName = soFather;
         });
 
         const imported = Object.values(subOrgMap);
@@ -2482,9 +2485,10 @@ export default function App() {
 
                   {subOrgTab==="form"&&(
                     <div style={{ border:"1.5px solid #b0c8e0",borderRadius:8,padding:16,background:"#f5faff" }}>
-                      <div style={{ display:"grid",gridTemplateColumns:"0.6fr 1fr 1fr",gap:8,marginBottom:14 }}>
+                      <div style={{ display:"grid",gridTemplateColumns:"0.6fr 1fr 1fr 1fr",gap:8,marginBottom:14 }}>
                         <div><label style={{ fontSize:11,color:"#555",display:"block",marginBottom:2 }}>Acc No</label><input {...inp2} value={so.accNo||""} onChange={e=>updateSO({...so,accNo:e.target.value})} placeholder="e.g. 695" style={{...inp2.style,fontWeight:700}} /></div>
                         <div><label style={{ fontSize:11,color:"#555",display:"block",marginBottom:2 }}>Sub-Organizer Name</label><input {...inp2} value={so.name||""} onChange={e=>updateSO({...so,name:e.target.value})} /></div>
+                        <div><label style={{ fontSize:11,color:"#555",display:"block",marginBottom:2 }}>Father Name</label><input {...inp2} value={so.fatherName||""} onChange={e=>updateSO({...so,fatherName:e.target.value})} /></div>
                         <div><label style={{ fontSize:11,color:"#555",display:"block",marginBottom:2 }}>Village (MSP)</label><input {...inp2} value={so.village||""} onChange={e=>updateSO({...so,village:e.target.value})} /></div>
                       </div>
                       <div style={{ marginBottom:14 }}>
