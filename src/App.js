@@ -1904,6 +1904,56 @@ export default function App() {
     reader.readAsBinaryString(file);
   };
 
+  // ── Smart C/o Update: match by Farmer No, update only C/o field ──
+  const handleCareOfUpdate = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    e.target.value = "";
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type: "binary", cellDates: true });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const allRows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
+        const clean = (v) => { if (v==null) return ""; return String(v).replace(/^['\"]+|['\"]+$/g,"").trim(); };
+
+        // Find header row
+        let headerIdx = 0;
+        for (let i=0;i<Math.min(5,allRows.length);i++) {
+          if (allRows[i]?.some(c => { const s=clean(c).toLowerCase(); return s.includes("farmer name")||s==="farmer no"; })) { headerIdx=i; break; }
+        }
+        const headers = (allRows[headerIdx]||[]).map(h=>clean(h));
+        const hIdx = {}; headers.forEach((h,i)=>{ hIdx[h]=i; });
+        const get = (row, name) => { const idx=hIdx[name]??-1; if (idx<0||row[idx]==null) return ""; return clean(row[idx]); };
+
+        // Build map of farmerNo → careOf from Excel
+        const careOfMap = {};
+        for (let ri=headerIdx+1; ri<allRows.length; ri++) {
+          const row = allRows[ri]; if (!row||row.length===0) continue;
+          const farmerNo = get(row,"Farmer No"); if (!farmerNo) continue;
+          const careOf = get(row,"C/O:")||get(row,"C/o (optional)")||get(row,"C/o")||get(row,"C/O")||"";
+          if (careOf) careOfMap[farmerNo] = careOf;
+        }
+
+        const total = Object.keys(careOfMap).length;
+        if (total === 0) { alert("⚠️ No C/o values found in the file. Make sure the file has a 'C/O:' column with values."); return; }
+
+        // Update only farmers whose Farmer No matches AND C/o is filled in Excel
+        let updated = 0;
+        const newFarmers = (farmers||[]).map(f => {
+          const co = careOfMap[f.farmerNo];
+          if (co !== undefined) { updated++; return {...f, careOf: co}; }
+          return f;
+        });
+
+        updateFarmers(newFarmers);
+        alert(`✅ Updated C/o for ${updated} farmers out of ${total} found in Excel.\n\nNo farmers were added or removed — only C/o field was updated.`);
+      } catch(err) {
+        alert("⚠️ Error reading file: " + err.message);
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
   const handleExcelUpload = (e) => {
     const file = e.target.files[0]; if (!file) return;
     const reader = new FileReader();
@@ -1960,8 +2010,8 @@ export default function App() {
               const date=toDate(row[hIdx[`Jamma${i} Date`]??-1]);
               const amount=getNum(row[hIdx[`Jamma${i} Amount`]??-1]);
               if (!date && !amount) break;
-              jammaEntries.push({ date:date||BILL_DATE, amount, interestRate:getNum(row[hIdx[`Jamma${i} Interest%`]??-1])||0, note:get(row,`Jamma${i} Note`) });
-            }            imported.push({ id:Date.now()+ri, farmerNo:get(row,"Farmer No"), name:farmerName, fatherName:get(row,"Father Name"), village:get(row,"Village"), careOf:get(row,"C/o (optional)")||get(row,"C/o")||"", advances, crops, jammaEnabled, jammaEntries, comment:get(row,"Farmer Comment") });
+              jammaEntries.push({ date:date||BILL_DATE, amount, interestRate:getNum(row[hIdx[`Jamma${i} Interest%`]??-1])||getNum(row[hIdx[`Jamma${i} Interest`]??-1])||0, note:get(row,`Jamma${i} Note`) });
+            }            imported.push({ id:Date.now()+ri, farmerNo:get(row,"Farmer No"), name:farmerName, fatherName:get(row,"Father Name"), village:get(row,"Village"), careOf:get(row,"C/o (optional)")||get(row,"C/o")||get(row,"C/O:")||get(row,"C/O")||"", advances, crops, jammaEnabled, jammaEntries, comment:get(row,"Farmer Comment") });
           }
         } else {
           // ── OLD FORMAT: multi-row per farmer ──
@@ -2051,6 +2101,7 @@ export default function App() {
           <button onClick={()=>setShowSettings(true)} style={{...btnStyle, background:"rgba(80,80,80,0.6)"}}>⚙️ Settings</button>
           <button onClick={mode==="suborgs"?downloadSubOrgTemplate:downloadTemplate} style={btnStyle}>📥 Template</button>
           <label style={{...btnStyle,display:"inline-block"}}>📤 Upload Excel<input type="file" accept=".xlsx,.xls,.csv" onChange={mode==="suborgs"?handleSubOrgExcelUpload:handleExcelUpload} style={{display:"none"}} /></label>
+          {mode==="farmers" && <label style={{...btnStyle,display:"inline-block",background:"rgba(230,126,34,0.7)"}}>🔄 Update C/o<input type="file" accept=".xlsx,.xls,.csv" onChange={handleCareOfUpdate} style={{display:"none"}} /></label>}
         </div>
       </div>
 
