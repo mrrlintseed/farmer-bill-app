@@ -454,7 +454,7 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
                 {growersCalc.filter(g => _isSettled(g.variety)).map((g, i) => {
                   const ip = g.result === "Pass";
                   return (
-                    <React.Fragment key={"sf"+i}>
+                    <>
                     <tr key={"s"+i} style={{ background: !ip ? "#fdecea" : i%2===0?"#e8f5e8":"#f5fff5", borderBottom:"1px solid #b8ddb8", opacity:0.85 }}>
                       <GTD ch={i + 1} />
                       <GTD ch={g.lotNo||"—"} />
@@ -469,7 +469,7 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
                       <GTD ch={ip?`₹${g.calcAmt.toLocaleString("en-IN")}`:"—"} s={{fontWeight:600,color:"#1a5c1a"}} />
                     </tr>
                     {g.note && <tr key={"sn"+i}><td colSpan={11} style={{padding:"1px 8px 3px 28px",fontSize:10,color:"#856404",fontStyle:"italic",borderBottom:"1px solid #b8ddb8",background:"#fffdf0"}}>📝 {g.note}</td></tr>}
-                    </React.Fragment>
+                    </>
                   );
                 })}
                 {/* ── TO PAY GROWERS ── */}
@@ -482,7 +482,7 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
                   const ip = g.result === "Pass";
                   const offset = growersCalc.filter(x=>_isSettled(x.variety)).length;
                   return (
-                    <React.Fragment key={"tf"+i}>
+                    <>
                     <tr key={"tp"+i} style={{ background: !ip?"#fdecea":i%2===0?"#f0fff0":"#fff", borderBottom:"1px solid #d4edd4" }}>
                       <GTD ch={offset + i + 1} />
                       <GTD ch={g.lotNo||"—"} />
@@ -497,7 +497,7 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
                       <GTD ch={ip?`₹${g.calcAmt.toLocaleString("en-IN")}`:"—"} s={{fontWeight:600,color:"#1a6a1a"}} />
                     </tr>
                     {g.note && <tr key={"tn"+i}><td colSpan={11} style={{padding:"1px 8px 3px 28px",fontSize:10,color:"#856404",fontStyle:"italic",borderBottom:"1px solid #d4edd4",background:"#fffdf0"}}>📝 {g.note}</td></tr>}
-                    </React.Fragment>
+                    </>
                   );
                 })}
                 {/* ── PENDING GROWERS ── */}
@@ -510,7 +510,7 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
                   const ip = g.result === "Pass";
                   const offset = growersCalc.filter(x=>_isPaid(x.variety)).length;
                   return (
-                    <React.Fragment key={"pf"+i}>
+                    <>
                     <tr key={"pd"+i} style={{ background:"#fff8e6", borderBottom:"1px solid #f0d080" }}>
                       <GTD ch={offset + i + 1} />
                       <GTD ch={g.lotNo||"—"} />
@@ -525,7 +525,7 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
                       <GTD ch={ip?"⏳":"—"} s={{fontWeight:600,color:"#856404"}} />
                     </tr>
                     {g.note && <tr key={"pn"+i} style={{background:"#fffdf0"}}><td colSpan={11} style={{padding:"1px 8px 3px 28px",fontSize:10,color:"#856404",fontStyle:"italic",borderBottom:"1px solid #f0d080"}}>📝 {g.note}</td></tr>}
-                    </React.Fragment>
+                    </>
                   );
                 })}
                 <tr style={{ background: "#e8f0ff", fontWeight: 700 }}>
