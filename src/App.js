@@ -5,6 +5,7 @@ import { storage } from "./storage";
 import { downloadFarmerBillPDF, downloadAllBillsPDF } from "./pdfGenerator";
 
 const DEFAULT_BILL_DATE = "2026-07-01";
+// App version: 2026-07-02-v2
 // Global BILL_DATE reads from localStorage so outside-App functions can use it
 let BILL_DATE = (() => { try { return localStorage.getItem("app_bill_date")||DEFAULT_BILL_DATE; } catch { return DEFAULT_BILL_DATE; } })();
 
