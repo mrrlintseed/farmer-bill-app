@@ -2516,6 +2516,9 @@ export default function App() {
                 </div>
                 <div style={{ padding:"8px 10px",borderTop:"1px solid #2d4a6a" }}>
                   <button onClick={addSubOrg} style={{ width:"100%",background:"rgba(255,255,255,0.1)",color:"#fff",border:"1px dashed rgba(255,255,255,0.3)",borderRadius:4,padding:"6px",cursor:"pointer",fontSize:12,marginBottom:4 }}>+ Add Sub-Organizer</button>
+                  <button onClick={()=>setSubOrgTab("summary")} style={{width:"100%",background:subOrgTab==="summary"?"rgba(255,200,0,0.3)":"rgba(255,200,0,0.1)",color:"#ffd700",border:"1px dashed #ffd700",borderRadius:4,padding:"6px",cursor:"pointer",fontSize:12,display:"block",textAlign:"center",marginBottom:4}}>
+                    📊 All Sub-Org Summary
+                  </button>
                   <button onClick={exportSubOrgData} style={{width:"100%",background:"rgba(45,90,138,0.4)",color:"#7ab8e8",border:"1px dashed #7ab8e8",borderRadius:4,padding:"6px",cursor:"pointer",fontSize:12,display:"block",textAlign:"center",marginBottom:4}}>
                     📊 Export Sub-Org Excel
                   </button>
@@ -2543,7 +2546,128 @@ export default function App() {
                 <div style={{ fontSize:16,fontWeight:600,marginTop:10 }}>No Sub-Organizers yet</div>
                 <div style={{ fontSize:13,color:"#888",marginTop:6 }}>Click "+ Add Sub-Organizer" in the panel</div>
               </div>
-            ):currentSubOrg&&(()=>{
+            ):subOrgTab==="summary"?(()=>{
+              // Calculate balance for each sub-org
+              const fmt = n => `₹${Math.abs(Math.round(n)).toLocaleString("en-IN")}`;
+              const soSummary = subOrgs.map(so => {
+                const totalAdvWI = (so.advances||[]).reduce((s,a) => {
+                  const {interest} = calcInterest(a.amount, a.interestRate, a.date, BILL_DATE);
+                  return s + a.amount + interest;
+                }, 0);
+                const passGrowers = (so.growers||[]).filter(g=>g.result==="Pass");
+                const totalQty = passGrowers.reduce((s,g)=>s+(parseFloat(g.packets)||0),0);
+                const totalCropVal = passGrowers.reduce((s,g)=>{
+                  const rate = getSubOrgVarietyRate(g.variety)||parseFloat(g.rate)||0;
+                  return s+(parseFloat(g.packets)||0)*rate;
+                },0);
+                const totalFound = (so.foundationSeeds||[]).reduce((s,f)=>s+(parseFloat(f.area)||0)*1000,0);
+                const totalTrans = totalQty;
+                const totalJammaWI = (so.jammaEntries||[]).reduce((s,j)=>{
+                  const {interest} = calcInterest(parseFloat(j.amount)||0, parseFloat(j.interestRate)||0, j.date||BILL_DATE, BILL_DATE);
+                  return s+(parseFloat(j.amount)||0)+interest;
+                },0);
+                const balance = totalCropVal - totalAdvWI + totalJammaWI - totalFound - totalTrans;
+                return { so, totalAdvWI, totalQty, totalCropVal, balance };
+              });
+              const grandAdv = soSummary.reduce((s,x)=>s+x.totalAdvWI,0);
+              const grandQty = soSummary.reduce((s,x)=>s+x.totalQty,0);
+              const grandCrop = soSummary.reduce((s,x)=>s+x.totalCropVal,0);
+              const grandPay = soSummary.filter(x=>x.balance>=0).reduce((s,x)=>s+x.balance,0);
+              const grandDue = soSummary.filter(x=>x.balance<0).reduce((s,x)=>s+Math.abs(x.balance),0);
+              return (
+                <div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
+                    <div style={{fontWeight:800,fontSize:18,color:"#1a2a4a"}}>📊 Sub-Org Summary</div>
+                    <button onClick={()=>{
+                      const rows = soSummary.map((x,i)=>{
+                        const {so,totalAdvWI,totalQty,totalCropVal,balance}=x;
+                        return `<tr style="background:${i%2===0?"#f5f8ff":"#fff"}">
+                          <td style="padding:6px 10px;border:1px solid #ddd;">${so.accNo||"—"}</td>
+                          <td style="padding:6px 10px;border:1px solid #ddd;font-weight:600;">${so.name||"—"}</td>
+                          <td style="padding:6px 10px;border:1px solid #ddd;">${so.village||"—"}</td>
+                          <td style="padding:6px 10px;border:1px solid #ddd;text-align:right;">${(so.growers||[]).length}</td>
+                          <td style="padding:6px 10px;border:1px solid #ddd;text-align:right;">${totalQty.toLocaleString("en-IN")}</td>
+                          <td style="padding:6px 10px;border:1px solid #ddd;text-align:right;">₹${Math.round(totalCropVal).toLocaleString("en-IN")}</td>
+                          <td style="padding:6px 10px;border:1px solid #ddd;text-align:right;color:#c0392b;">₹${Math.round(totalAdvWI).toLocaleString("en-IN")}</td>
+                          <td style="padding:6px 10px;border:1px solid #ddd;text-align:right;font-weight:700;color:${balance>=0?"#1a5c1a":"#c0392b"};">₹${Math.abs(Math.round(balance)).toLocaleString("en-IN")} ${balance>=0?"(Pay)":"(Due)"}</td>
+                        </tr>`;
+                      }).join("");
+                      const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Sub-Org Summary</title>
+                        <style>body{font-family:Georgia,serif;padding:20px;}h2{color:#1a2a4a;}table{border-collapse:collapse;width:100%;font-size:12px;}th{background:#1a2a4a;color:#fff;padding:7px 10px;border:1px solid #ddd;}.total-row td{font-weight:800;background:#e8f0ff;border-top:2px solid #1a2a4a;}@media print{@page{margin:8mm;size:A4 landscape;}}</style>
+                        </head><body><h2>📊 Sub-Org Summary</h2>
+                        <div style="font-size:13px;color:#555;margin-bottom:10px;">Bill Date: ${fmtDate(BILL_DATE)} | Total Sub-Orgs: ${subOrgs.length}</div>
+                        <table><thead><tr><th>Acc No</th><th>Sub-Org Name</th><th>Village</th><th>Growers</th><th>Qty</th><th>Crop Value</th><th>Adv+Int</th><th>Balance</th></tr></thead>
+                        <tbody>${rows}
+                        <tr class="total-row"><td colspan="3">GRAND TOTAL</td>
+                          <td style="text-align:right;padding:6px 10px;border:1px solid #ddd;">${subOrgs.reduce((s,so)=>s+(so.growers||[]).length,0)}</td>
+                          <td style="text-align:right;padding:6px 10px;border:1px solid #ddd;">${grandQty.toLocaleString("en-IN")}</td>
+                          <td style="text-align:right;padding:6px 10px;border:1px solid #ddd;">₹${Math.round(grandCrop).toLocaleString("en-IN")}</td>
+                          <td style="text-align:right;padding:6px 10px;border:1px solid #ddd;color:#c0392b;">₹${Math.round(grandAdv).toLocaleString("en-IN")}</td>
+                          <td style="text-align:right;padding:6px 10px;border:1px solid #ddd;">Pay:₹${Math.round(grandPay).toLocaleString("en-IN")} Due:₹${Math.round(grandDue).toLocaleString("en-IN")}</td>
+                        </tr></tbody></table></body></html>`;
+                      const w=window.open("","_blank"); w.document.write(html); w.document.close(); setTimeout(()=>w.print(),400);
+                    }} style={{background:"#1a2a4a",color:"#fff",border:"none",borderRadius:6,padding:"9px 16px",fontWeight:700,fontSize:13,cursor:"pointer"}}>🖨️ Print Summary</button>
+                  </div>
+
+                  {/* Summary cards */}
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:16}}>
+                    {[
+                      ["Total Sub-Orgs",subOrgs.length,"#1a2a4a","#e8f0ff"],
+                      ["Total Crop Value",fmt(grandCrop),"#1a5c1a","#e8f5e9"],
+                      ["Total Bal to Pay",fmt(grandPay),"#1a5c1a","#e8f5e9"],
+                      ["Total Bal Due",fmt(grandDue),"#c0392b","#fdecea"],
+                    ].map(([label,val,color,bg])=>(
+                      <div key={label} style={{background:bg,border:`1px solid ${color}30`,borderRadius:8,padding:"12px 14px"}}>
+                        <div style={{fontSize:11,color:"#555",marginBottom:4}}>{label}</div>
+                        <div style={{fontSize:18,fontWeight:800,color}}>{val}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Summary table */}
+                  <div style={{background:"#fff",border:"1px solid #c8d8e8",borderRadius:8,overflow:"hidden"}}>
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                      <thead>
+                        <tr style={{background:"#1a2a4a",color:"#fff"}}>
+                          {["Acc No","Sub-Org Name","Village","Growers","Total Qty","Crop Value","Adv+Int","Balance"].map(h=>(
+                            <th key={h} style={{padding:"8px 10px",textAlign:h==="Sub-Org Name"||h==="Village"?"left":"center",fontWeight:600,fontSize:12}}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {soSummary.map(({so,totalAdvWI,totalQty,totalCropVal,balance},i)=>(
+                          <tr key={i} onClick={()=>{setSelectedSubOrgIdx(i);setSubOrgTab("form");}} style={{background:i%2===0?"#f5f8ff":"#fff",cursor:"pointer",borderBottom:"1px solid #d0e4f4"}}
+                            onMouseEnter={e=>e.currentTarget.style.background="#e8f0ff"}
+                            onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"#f5f8ff":"#fff"}>
+                            <td style={{padding:"8px 10px",textAlign:"center",fontWeight:700,color:"#2d5a8a"}}>{so.accNo||"—"}</td>
+                            <td style={{padding:"8px 10px",fontWeight:600}}>{so.name||"—"}</td>
+                            <td style={{padding:"8px 10px",color:"#555"}}>{so.village||"—"}</td>
+                            <td style={{padding:"8px 10px",textAlign:"center"}}>{(so.growers||[]).length}</td>
+                            <td style={{padding:"8px 10px",textAlign:"center",fontWeight:600}}>{totalQty.toLocaleString("en-IN")}</td>
+                            <td style={{padding:"8px 10px",textAlign:"right",fontWeight:600,color:"#1a5c1a"}}>{fmt(totalCropVal)}</td>
+                            <td style={{padding:"8px 10px",textAlign:"right",color:"#c0392b"}}>{fmt(totalAdvWI)}</td>
+                            <td style={{padding:"8px 10px",textAlign:"right",fontWeight:700,color:balance>=0?"#1a5c1a":"#c0392b"}}>
+                              {fmt(balance)} <span style={{fontSize:10,fontWeight:400}}>({balance>=0?"Pay":"Due"})</span>
+                            </td>
+                          </tr>
+                        ))}
+                        <tr style={{background:"#e8f0ff",fontWeight:800,borderTop:"2px solid #1a2a4a"}}>
+                          <td colSpan={3} style={{padding:"8px 10px",color:"#1a2a4a"}}>GRAND TOTAL</td>
+                          <td style={{padding:"8px 10px",textAlign:"center"}}>{subOrgs.reduce((s,so)=>s+(so.growers||[]).length,0)}</td>
+                          <td style={{padding:"8px 10px",textAlign:"center"}}>{grandQty.toLocaleString("en-IN")}</td>
+                          <td style={{padding:"8px 10px",textAlign:"right",color:"#1a5c1a"}}>{fmt(grandCrop)}</td>
+                          <td style={{padding:"8px 10px",textAlign:"right",color:"#c0392b"}}>{fmt(grandAdv)}</td>
+                          <td style={{padding:"8px 10px",textAlign:"right"}}>
+                            <span style={{color:"#1a5c1a"}}>Pay: {fmt(grandPay)}</span>
+                            <span style={{color:"#c0392b",marginLeft:8}}>Due: {fmt(grandDue)}</span>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })():currentSubOrg&&(()=>{
               const so=currentSubOrg;
               const growers=so.growers||[];
               const updateSO=(updated)=>{const copy=[...subOrgs];copy[selectedSubOrgIdx]=updated;updateSubOrgs(copy);};
