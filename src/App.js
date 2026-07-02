@@ -466,6 +466,7 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
                       <GTD ch={ip?`₹${(g.rateUsed||0).toLocaleString("en-IN")}`:"—"} />
                       <GTD ch={ip?`₹${g.calcAmt.toLocaleString("en-IN")}`:"—"} s={{fontWeight:600,color:"#1a5c1a"}} />
                     </tr>
+                    {g.note && <tr key={"sn"+i}><td colSpan={11} style={{padding:"1px 8px 3px 28px",fontSize:10,color:"#856404",fontStyle:"italic",borderBottom:"1px solid #b8ddb8",background:"#fffdf0"}}>📝 {g.note}</td></tr>}
                   );
                 })}
                 {/* ── TO PAY GROWERS ── */}
@@ -491,6 +492,7 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
                       <GTD ch={ip?`₹${(g.rateUsed||0).toLocaleString("en-IN")}`:"—"} />
                       <GTD ch={ip?`₹${g.calcAmt.toLocaleString("en-IN")}`:"—"} s={{fontWeight:600,color:"#1a6a1a"}} />
                     </tr>
+                    {g.note && <tr key={"tn"+i}><td colSpan={11} style={{padding:"1px 8px 3px 28px",fontSize:10,color:"#856404",fontStyle:"italic",borderBottom:"1px solid #d4edd4",background:"#fffdf0"}}>📝 {g.note}</td></tr>}
                   );
                 })}
                 {/* ── PENDING GROWERS ── */}
@@ -516,6 +518,7 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
                       <GTD ch={ip?`₹${(g.rateUsed||0).toLocaleString("en-IN")}`:"—"} s={{color:"#856404"}} />
                       <GTD ch={ip?"⏳":"—"} s={{fontWeight:600,color:"#856404"}} />
                     </tr>
+                    {g.note && <tr key={"pn"+i} style={{background:"#fffdf0"}}><td colSpan={11} style={{padding:"1px 8px 3px 28px",fontSize:10,color:"#856404",fontStyle:"italic",borderBottom:"1px solid #f0d080"}}>📝 {g.note}</td></tr>}
                   );
                 })}
                 <tr style={{ background: "#e8f0ff", fontWeight: 700 }}>
@@ -1128,7 +1131,10 @@ export default function App() {
     ...(farmers||[]).flatMap(f => (f.crops||[]).map(c => c.variety).filter(Boolean)),
     ...(subOrgs||[]).flatMap(so => (so.growers||[]).map(g => g.variety).filter(Boolean))
   ])].sort();
-  const allSubOrgVarieties = [...new Set((subOrgs||[]).flatMap(so => (so.growers||[]).map(g => g.variety).filter(Boolean)))].sort();
+  const allSubOrgVarieties = [...new Set((subOrgs||[]).flatMap(so => [
+    ...(so.growers||[]).map(g => g.variety),
+    ...(so.foundationSeeds||[]).map(f => f.variety)
+  ].filter(Boolean)))].sort();
   // Sub-org variety settings stored separately under "so_" prefix in varietySettings
   // Status: "pending" = company hasn't paid | "paid" = company paid, not yet settled with sub-org | "settled" = already paid to sub-org
   const isSubOrgVarietyPaid = (variety) => {
