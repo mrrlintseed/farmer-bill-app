@@ -3183,11 +3183,14 @@ export default function App() {
 
               farmerList.forEach(f => {
                 // Crop value for this farmer — ONLY for this variety
+                // Use rate from Variety Settings if set, otherwise fall back to crop's own rate
+                const settingsRate = getVarietyRate(variety);
                 let fCropVal = 0, fFound = 0, fTrans = 0, fQty = 0;
                 (f.crops||[]).forEach(c => {
                   if (c.variety !== variety) return;
                   const qty = parseFloat(c.quantity)||0;
-                  if (c.result === "Pass") { fCropVal += qty * (parseFloat(c.ratePerUnit)||0); fQty += qty; }
+                  const rateToUse = (c.rateOverride===true) ? (parseFloat(c.ratePerUnit)||0) : (settingsRate || parseFloat(c.ratePerUnit)||0);
+                  if (c.result === "Pass") { fCropVal += qty * rateToUse; fQty += qty; }
                   fFound += (parseFloat(c.area)||0) * 1000;
                   fTrans += qty;
                 });
