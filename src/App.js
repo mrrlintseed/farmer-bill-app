@@ -578,7 +578,20 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
         )}
 
         {/* ── VARIETY SUMMARY TABLE (final bill only) ── */}
-        {_billMode !== "partial" && (so.foundationSeeds||[]).length > 0 && (
+        {_billMode !== "partial" && (() => {
+          // Build variety list in grower order (unique, preserving first appearance)
+          const growerVarieties = [];
+          (so.growers||[]).forEach(g => {
+            if (g.variety && !growerVarieties.includes(g.variety)) growerVarieties.push(g.variety);
+          });
+          // Also add foundation-only varieties (zero growers) not already in list
+          (so.foundationSeeds||[]).forEach(f => {
+            if (f.variety && !growerVarieties.includes(f.variety)) growerVarieties.push(f.variety);
+          });
+          if (growerVarieties.length === 0) return null;
+          const foundMap = {};
+          (so.foundationSeeds||[]).forEach(f => { if(f.variety) foundMap[f.variety] = parseFloat(f.area)||0; });
+          return (
           <div style={{ marginBottom: 12 }}>
             <div style={{ fontWeight: 700, color: "#1a2a4a", marginBottom: 5, fontSize: 12 }}>VARIETY SUMMARY | వెరైటీ వివరాలు</div>
             <table style={{ width:"100%", borderCollapse:"collapse" }}>
@@ -590,23 +603,22 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
                 </tr>
               </thead>
               <tbody>
-                {(so.foundationSeeds||[]).map((f,i)=>{
-                  const area = parseFloat(f.area)||0;
-                  const qty = (so.growers||[]).filter(g=>g.variety===f.variety&&g.result==="Pass").reduce((s,g)=>s+(parseFloat(g.packets)||0),0);
-                  const isSettledVar = (settledVarieties||[]).includes(f.variety);
-                  const isPaidVar = _isPaid(f.variety);
+                {growerVarieties.map((variety,i)=>{
+                  const area = foundMap[variety] || 0;
+                  const qty = (so.growers||[]).filter(g=>g.variety===variety&&g.result==="Pass").reduce((s,g)=>s+(parseFloat(g.packets)||0),0);
+                  const isSettledVar = (settledVarieties||[]).includes(variety);
+                  const isPaidVar = _isPaid(variety);
                   const status = isSettledVar ? "settled" : isPaidVar ? "topay" : "pending";
                   const statusLabel = status==="settled" ? "✔ Settled" : status==="topay" ? "💰 To Pay" : "⏳ Pending";
                   const statusColor = status==="settled" ? "#1a5c1a" : status==="topay" ? "#2d5a8a" : "#856404";
                   const statusBg = status==="settled" ? "#e8f5e9" : status==="topay" ? "#e8f0ff" : "#fff8e6";
-                  // Get settled date from per-sub-org _settledDates
-                  const settledDate = (so._settledDates||{})[f.variety] || "";
-                  const notes = (so._varietyNotes||{})[f.variety] || "";
+                  const settledDate = (so._settledDates||{})[variety] || "";
+                  const notes = (so._varietyNotes||{})[variety] || "";
                   return (
                     <tr key={i} style={{ background:i%2===0?"#f5f8ff":"#fff", borderBottom:"1px solid #d0e4f4" }}>
                       <td style={{ padding:"3px 10px", textAlign:"center", fontSize:11 }}>{i+1}</td>
-                      <td style={{ padding:"3px 10px", textAlign:"left", fontSize:11, fontWeight:600 }}>{f.variety}</td>
-                      <td style={{ padding:"3px 10px", textAlign:"center", fontSize:11 }}>{area} Ac</td>
+                      <td style={{ padding:"3px 10px", textAlign:"left", fontSize:11, fontWeight:600 }}>{variety}</td>
+                      <td style={{ padding:"3px 10px", textAlign:"center", fontSize:11 }}>{area > 0 ? `${area} Ac` : "—"}</td>
                       <td style={{ padding:"3px 10px", textAlign:"center", fontSize:11, fontWeight:600 }}>{qty.toLocaleString("en-IN")}</td>
                       <td style={{ padding:"3px 10px", textAlign:"center", fontSize:11, fontWeight:700, color:statusColor, background:statusBg }}>{statusLabel}</td>
                       <td style={{ padding:"3px 10px", textAlign:"center", fontSize:11 }}>{isSettledVar ? fmtDate(settledDate) : "—"}</td>
@@ -616,11 +628,10 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
                 })}
                 <tr style={{ background:"#e8f0ff", fontWeight:700 }}>
                   <td colSpan={2} style={{ padding:"4px 10px", fontSize:11, color:"#1a2a4a" }}>TOTAL</td>
-                  <td style={{ textAlign:"center", fontSize:11 }}>{(so.foundationSeeds||[]).reduce((s,f)=>s+(parseFloat(f.area)||0),0)} Ac</td>
+                  <td style={{ textAlign:"center", fontSize:11 }}>{Object.values(foundMap).reduce((s,a)=>s+a,0)} Ac</td>
                   <td style={{ textAlign:"center", fontSize:11 }}>
-                    {(so.foundationSeeds||[]).reduce((s,f)=>{
-                      const qty=(so.growers||[]).filter(g=>g.variety===f.variety&&g.result==="Pass").reduce((ss,g)=>ss+(parseFloat(g.packets)||0),0);
-                      return s+qty;
+                    {growerVarieties.reduce((s,variety)=>{
+                      return s+(so.growers||[]).filter(g=>g.variety===variety&&g.result==="Pass").reduce((ss,g)=>ss+(parseFloat(g.packets)||0),0);
                     },0).toLocaleString("en-IN")}
                   </td>
                   <td colSpan={3}></td>
@@ -628,7 +639,8 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
               </tbody>
             </table>
           </div>
-        )}
+          );
+        })()}
 
         <div style={{ background: _billMode==="partial" ? "#f0f5ff" : (balance >= 0 ? "#e8f5e9" : "#fdecea"), borderRadius: 6, padding: "12px 16px", border: `2px solid ${_billMode==="partial"?"#2d5a8a":balance >= 0 ? "#2d6a2d" : "#e74c3c"}` }}>
           {_billMode === "partial" ? (
