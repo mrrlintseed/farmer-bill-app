@@ -1096,6 +1096,7 @@ export default function App() {
   const [subOrgs, setSubOrgs] = useState([]);
   const [mode, setMode] = useState("farmers");
   const [selectedVillage, setSelectedVillage] = useState(null);
+  const [villageSearch, setVillageSearch] = useState("");
   const [selectedCareOf, setSelectedCareOf] = useState(null);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [tab, setTab] = useState("form");
@@ -2129,12 +2130,21 @@ export default function App() {
             <button onClick={()=>setVillagesPanelOpen(!villagesPanelOpen)} style={{ width:"100%",background:"#0a1f0a",color:"#8bc88b",border:"none",borderBottom:"1px solid #2d5a2d",padding:"8px 0",cursor:"pointer",fontSize:15,textAlign:"center" }}>{villagesPanelOpen?"◀":"▶"}</button>
             {villagesPanelOpen && (() => {
               const villages = [...new Set(farmers.map(f => f.village?.trim()||""))].sort();
+              const filteredVillages = villages.filter(v=>v.toLowerCase().includes(villageSearch.toLowerCase()));
               return (
                 <>
                   <div style={{ padding:"6px 10px",fontSize:10,color:"#8bc88b",fontWeight:700,letterSpacing:1,borderBottom:"1px solid #2d5a2d" }}>VILLAGES ({villages.length})</div>
+                  <div style={{ padding:"6px 8px", borderBottom:"1px solid #2d5a2d" }}>
+                    <input
+                      value={villageSearch}
+                      onChange={e=>{setVillageSearch(e.target.value);setFarmerPage(0);}}
+                      placeholder="🔍 Search village..."
+                      style={{ width:"100%",padding:"5px 8px",borderRadius:4,border:"1px solid #3d8a3d",background:"rgba(255,255,255,0.1)",color:"#fff",fontSize:11,boxSizing:"border-box",outline:"none" }}
+                    />
+                  </div>
                   <div style={{ flex:1,overflowY:"auto" }}>
-                    <div onClick={()=>{setSelectedVillage(null);setFarmerSearch("");setFarmerPage(0);}} style={{ padding:"8px 10px",cursor:"pointer",background:selectedVillage===null?"#2d6a2d":"transparent",borderLeft:selectedVillage===null?"3px solid #7dd87d":"3px solid transparent",fontSize:12,fontWeight:600,borderBottom:"1px solid #1a3a1a" }}>🌾 All ({farmers.length})</div>
-                    {villages.map(v => {
+                    <div onClick={()=>{setSelectedVillage(null);setFarmerSearch("");setFarmerPage(0);setVillageSearch("");}} style={{ padding:"8px 10px",cursor:"pointer",background:selectedVillage===null?"#2d6a2d":"transparent",borderLeft:selectedVillage===null?"3px solid #7dd87d":"3px solid transparent",fontSize:12,fontWeight:600,borderBottom:"1px solid #1a3a1a" }}>🌾 All ({farmers.length})</div>
+                    {filteredVillages.map(v => {
                       const count = farmers.filter(f=>(f.village?.trim()||"")===v).length;
                       return (
                         <div key={v} onClick={()=>{setSelectedVillage(v);setFarmerSearch("");setFarmerPage(0);}} style={{ padding:"8px 10px",cursor:"pointer",background:selectedVillage===v?"#2d6a2d":"transparent",borderLeft:selectedVillage===v?"3px solid #7dd87d":"3px solid transparent",borderBottom:"1px solid #1a3a1a" }}>
@@ -2143,6 +2153,9 @@ export default function App() {
                         </div>
                       );
                     })}
+                    {filteredVillages.length===0 && (
+                      <div style={{ padding:"12px 10px",fontSize:11,color:"#8bc88b",fontStyle:"italic" }}>No villages found</div>
+                    )}
                   </div>
                   <div style={{ padding:"8px 10px",borderTop:"1px solid #2d5a2d" }}>
                     <button onClick={()=>{const v=prompt("Enter village name:");if(v?.trim()){addFarmer(v.trim());setSelectedVillage(v.trim());setVillagesPanelOpen(true);setFarmersPanelOpen(true);}}} style={{ width:"100%",background:"rgba(255,255,255,0.08)",color:"#fff",border:"1px dashed rgba(255,255,255,0.3)",borderRadius:4,padding:"5px",cursor:"pointer",fontSize:11 }}>+ New Village</button>
