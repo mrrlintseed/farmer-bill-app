@@ -2538,6 +2538,42 @@ export default function App() {
                         ))}
                         <button onClick={()=>updateSO({...so,advances:[...(so.advances||[]),{date:new Date().toISOString().split("T")[0],amount:0,interestRate:24,note:""}]})} style={{background:"#e8f0ff",color:"#2d5a8a",border:"1px dashed #2d5a8a",borderRadius:4,padding:"4px 12px",cursor:"pointer",fontSize:12}}>+ Add Advance</button>
                       </div>
+
+                      {/* Foundation Seeds section */}
+                      <div style={{marginTop:14,borderTop:"1px dashed #2d6a2d",paddingTop:10}}>
+                        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                          <span style={{fontWeight:700,fontSize:13,color:"#2d6a2d"}}>🌱 Foundation Seeds</span>
+                          <span style={{fontSize:11,color:"#888"}}>(Variety + Area in acres — ₹1000/acre deducted)</span>
+                          <button onClick={()=>updateSO({...so,foundationSeeds:[...(so.foundationSeeds||[]),{variety:"",area:""}]})}
+                            style={{background:"rgba(45,106,45,0.1)",color:"#2d6a2d",border:"1px dashed #2d6a2d",borderRadius:4,padding:"3px 10px",cursor:"pointer",fontSize:11,marginLeft:"auto"}}>+ Add</button>
+                        </div>
+                        {(so.foundationSeeds||[]).length === 0 && (
+                          <div style={{fontSize:11,color:"#aaa",fontStyle:"italic",marginBottom:4}}>No foundation seeds added yet.</div>
+                        )}
+                        {(so.foundationSeeds||[]).map((fs,fi)=>(
+                          <div key={fi} style={{display:"grid",gridTemplateColumns:"1fr 0.5fr auto",gap:6,alignItems:"center",marginBottom:6}}>
+                            <div>
+                              <label style={{fontSize:10,color:"#555",display:"block",marginBottom:2}}>Variety Name</label>
+                              <input {...inp2} value={fs.variety||""} onChange={e=>{const arr=[...(so.foundationSeeds||[])];arr[fi]={...arr[fi],variety:e.target.value};updateSO({...so,foundationSeeds:arr});}}
+                                placeholder="e.g. Bio-7511" style={{...inp2.style,width:"100%"}} />
+                            </div>
+                            <div>
+                              <label style={{fontSize:10,color:"#555",display:"block",marginBottom:2}}>Area (Ac)</label>
+                              <input {...inp2} type="number" step="0.5" value={fs.area||""} onChange={e=>{const arr=[...(so.foundationSeeds||[])];arr[fi]={...arr[fi],area:e.target.value};updateSO({...so,foundationSeeds:arr});}}
+                                placeholder="0" style={{...inp2.style,width:"100%"}} />
+                            </div>
+                            <button onClick={()=>updateSO({...so,foundationSeeds:(so.foundationSeeds||[]).filter((_,k)=>k!==fi)})}
+                              style={{background:"#fdecea",color:"#e74c3c",border:"1px solid #e74c3c",borderRadius:4,padding:"5px 8px",cursor:"pointer",fontSize:11,marginTop:14}}>✕</button>
+                          </div>
+                        ))}
+                        {(so.foundationSeeds||[]).length > 0 && (
+                          <div style={{fontSize:11,color:"#2d6a2d",marginTop:4,fontWeight:600}}>
+                            Total Foundation: {(so.foundationSeeds||[]).reduce((s,fs)=>s+(parseFloat(fs.area)||0),0)} Ac
+                            = ₹{((so.foundationSeeds||[]).reduce((s,fs)=>s+(parseFloat(fs.area)||0),0)*1000).toLocaleString("en-IN")}
+                          </div>
+                        )}
+                      </div>
+
                       {/* Jamma section */}
                       <div style={{marginTop:14,borderTop:"1px dashed #856404",paddingTop:10}}>
                         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
