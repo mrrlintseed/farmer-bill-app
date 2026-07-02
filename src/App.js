@@ -1143,7 +1143,14 @@ export default function App() {
   const saveVarietySettings = (vs) => {
     setVarietySettings(vs);
     try { localStorage.setItem("variety_settings", JSON.stringify(vs)); } catch {}
-    autoSaveToCloud(null, null, vs);
+    // Save to Firebase
+    if (cloudSaveTimer.current) clearTimeout(cloudSaveTimer.current);
+    cloudSaveTimer.current = setTimeout(async () => {
+      setCloudStatus("saving");
+      const saved = await saveToCloud(farmers||[], subOrgs||[], vs);
+      setCloudStatus(saved ? "saved" : "error");
+      setTimeout(() => setCloudStatus("idle"), 3000);
+    }, 2000);
   };
   // Get all unique varieties from farmers
   const allVarieties = [...new Set([
