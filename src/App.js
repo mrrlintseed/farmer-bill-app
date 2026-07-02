@@ -1150,11 +1150,11 @@ export default function App() {
     return (s && s.billDate) ? s.billDate : BILL_DATE;
   };
   const getSubOrgVarietyRate = (variety) => {
-    const s = varietySettings["so_"+variety];
+    const s = varietySettings["so_"+variety] || varietySettings[variety];
     return (s && s.rate) ? parseFloat(s.rate) : null;
   };
   const getSubOrgVarietyType = (variety) => {
-    const s = varietySettings["so_"+variety];
+    const s = varietySettings["so_"+variety] || varietySettings[variety];
     if (s && s.type) return s.type;
     for (const so of (subOrgs||[])) {
       const g = (so.growers||[]).find(g=>g.variety===variety);
@@ -3339,13 +3339,13 @@ export default function App() {
                         <div style={{display:"flex",gap:2,justifyContent:"center"}}>
                           {["KMS","GMS"].map(t=>{
                             const active=(varietySettings[v.variety]?.type||v.detectedType)===t;
-                            return <button key={t} onClick={()=>{const nv={...varietySettings,[v.variety]:{...(varietySettings[v.variety]||{}),type:t}};saveVarietySettings(nv);}} style={{padding:"3px 6px",borderRadius:4,border:"none",fontWeight:700,fontSize:10,cursor:"pointer",background:active?(t==="GMS"?"#856404":"#1a3a8a"):"#f0f0f0",color:active?"#fff":"#aaa"}}>{t}</button>;
+                            return <button key={t} onClick={()=>{const nv={...varietySettings,[v.variety]:{...(varietySettings[v.variety]||{}),type:t},["so_"+v.variety]:{...(varietySettings["so_"+v.variety]||{}),type:t}};saveVarietySettings(nv);}} style={{padding:"3px 6px",borderRadius:4,border:"none",fontWeight:700,fontSize:10,cursor:"pointer",background:active?(t==="GMS"?"#856404":"#1a3a8a"):"#f0f0f0",color:active?"#fff":"#aaa"}}>{t}</button>;
                           })}
                         </div>
                       </div>
                       {/* Rate — shared */}
                       <div style={{padding:"4px 6px",textAlign:"center"}}>
-                        <input type="number" value={v.globalRate||""} onChange={e=>{const nv={...varietySettings,[v.variety]:{...(varietySettings[v.variety]||{}),rate:e.target.value}};saveVarietySettings(nv);}}
+                        <input type="number" value={v.globalRate||""} onChange={e=>{const nv={...varietySettings,[v.variety]:{...(varietySettings[v.variety]||{}),rate:e.target.value},["so_"+v.variety]:{...(varietySettings["so_"+v.variety]||{}),rate:e.target.value}};saveVarietySettings(nv);}}
                           style={{width:"60px",padding:"4px 5px",borderRadius:5,border:"2px solid #2d6a2d",fontSize:12,fontWeight:700,color:"#1a4a1a",textAlign:"center"}} placeholder={String(v.detectedRate)} />
                       </div>
                       {/* ── FARMER COLUMNS ── */}
