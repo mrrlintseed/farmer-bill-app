@@ -2540,38 +2540,60 @@ export default function App() {
                         <button onClick={()=>updateSO({...so,advances:[...(so.advances||[]),{date:new Date().toISOString().split("T")[0],amount:0,interestRate:24,note:""}]})} style={{background:"#e8f0ff",color:"#2d5a8a",border:"1px dashed #2d5a8a",borderRadius:4,padding:"4px 12px",cursor:"pointer",fontSize:12}}>+ Add Advance</button>
                       </div>
 
-                      {/* Foundation Seeds section */}
-                      <div style={{marginTop:14,borderTop:"1px dashed #2d6a2d",paddingTop:10}}>
-                        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                          <span style={{fontWeight:700,fontSize:13,color:"#2d6a2d"}}>🌱 Foundation Seeds</span>
-                          <span style={{fontSize:11,color:"#888"}}>(Variety + Area in acres — ₹1000/acre deducted)</span>
-                          <button onClick={()=>updateSO({...so,foundationSeeds:[...(so.foundationSeeds||[]),{variety:"",area:""}]})}
-                            style={{background:"rgba(45,106,45,0.1)",color:"#2d6a2d",border:"1px dashed #2d6a2d",borderRadius:4,padding:"3px 10px",cursor:"pointer",fontSize:11,marginLeft:"auto"}}>+ Add</button>
+
+                      {/* ── FOUNDATION SEEDS ── */}
+                      <div style={{marginTop:16,paddingTop:12,borderTop:"2px solid #2d6a2d"}}>
+                        <div style={{fontWeight:700,fontSize:13,color:"#2d6a2d",marginBottom:10}}>
+                          🌱 Foundation Seeds &nbsp;
+                          <span style={{fontWeight:400,fontSize:11,color:"#888"}}>(₹1000 per acre deducted)</span>
+                          <button
+                            onClick={()=>{const fs=[...(so.foundationSeeds||[]),{variety:"",area:""}];updateSO({...so,foundationSeeds:fs});}}
+                            style={{float:"right",background:"#e8f5e9",color:"#2d6a2d",border:"1px solid #2d6a2d",borderRadius:4,padding:"3px 12px",fontSize:12,cursor:"pointer",fontWeight:700}}>
+                            + Add Row
+                          </button>
                         </div>
-                        {(so.foundationSeeds||[]).length === 0 && (
-                          <div style={{fontSize:11,color:"#aaa",fontStyle:"italic",marginBottom:4}}>No foundation seeds added yet.</div>
-                        )}
-                        {(so.foundationSeeds||[]).map((fs,fi)=>(
-                          <div key={fi} style={{display:"grid",gridTemplateColumns:"1fr 0.5fr auto",gap:6,alignItems:"center",marginBottom:6}}>
-                            <div>
-                              <label style={{fontSize:10,color:"#555",display:"block",marginBottom:2}}>Variety Name</label>
-                              <input {...inp2} value={fs.variety||""} onChange={e=>{const arr=[...(so.foundationSeeds||[])];arr[fi]={...arr[fi],variety:e.target.value};updateSO({...so,foundationSeeds:arr});}}
-                                placeholder="e.g. Bio-7511" style={{...inp2.style,width:"100%"}} />
-                            </div>
-                            <div>
-                              <label style={{fontSize:10,color:"#555",display:"block",marginBottom:2}}>Area (Ac)</label>
-                              <input {...inp2} type="number" step="0.5" value={fs.area||""} onChange={e=>{const arr=[...(so.foundationSeeds||[])];arr[fi]={...arr[fi],area:e.target.value};updateSO({...so,foundationSeeds:arr});}}
-                                placeholder="0" style={{...inp2.style,width:"100%"}} />
-                            </div>
-                            <button onClick={()=>updateSO({...so,foundationSeeds:(so.foundationSeeds||[]).filter((_,k)=>k!==fi)})}
-                              style={{background:"#fdecea",color:"#e74c3c",border:"1px solid #e74c3c",borderRadius:4,padding:"5px 8px",cursor:"pointer",fontSize:11,marginTop:14}}>✕</button>
-                          </div>
-                        ))}
-                        {(so.foundationSeeds||[]).length > 0 && (
-                          <div style={{fontSize:11,color:"#2d6a2d",marginTop:4,fontWeight:600}}>
-                            Total Foundation: {(so.foundationSeeds||[]).reduce((s,fs)=>s+(parseFloat(fs.area)||0),0)} Ac
-                            = ₹{((so.foundationSeeds||[]).reduce((s,fs)=>s+(parseFloat(fs.area)||0),0)*1000).toLocaleString("en-IN")}
-                          </div>
+                        {(so.foundationSeeds||[]).length===0 ? (
+                          <div style={{color:"#aaa",fontSize:12,fontStyle:"italic",padding:"6px 0"}}>No foundation seeds yet — click + Add Row to add</div>
+                        ) : (
+                          <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                            <thead>
+                              <tr style={{background:"#e8f5e9"}}>
+                                <th style={{padding:"5px 8px",textAlign:"left",border:"1px solid #c8e6c9"}}>Variety Name</th>
+                                <th style={{padding:"5px 8px",textAlign:"center",border:"1px solid #c8e6c9",width:100}}>Area (Ac)</th>
+                                <th style={{padding:"5px 8px",textAlign:"center",border:"1px solid #c8e6c9",width:80}}>Cost ₹</th>
+                                <th style={{padding:"5px 8px",textAlign:"center",border:"1px solid #c8e6c9",width:40}}></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(so.foundationSeeds||[]).map((fs,fi)=>(
+                                <tr key={fi} style={{background:fi%2===0?"#fff":"#f9fdf9"}}>
+                                  <td style={{padding:"4px 6px",border:"1px solid #c8e6c9"}}>
+                                    <input value={fs.variety||""} onChange={e=>{const a=[...(so.foundationSeeds||[])];a[fi]={...a[fi],variety:e.target.value};updateSO({...so,foundationSeeds:a});}}
+                                      placeholder="e.g. Bio-7511"
+                                      style={{width:"100%",padding:"4px 6px",border:"1px solid #b0c8b0",borderRadius:4,fontSize:13}} />
+                                  </td>
+                                  <td style={{padding:"4px 6px",border:"1px solid #c8e6c9"}}>
+                                    <input type="number" step="0.5" value={fs.area||""} onChange={e=>{const a=[...(so.foundationSeeds||[])];a[fi]={...a[fi],area:e.target.value};updateSO({...so,foundationSeeds:a});}}
+                                      placeholder="0"
+                                      style={{width:"100%",padding:"4px 6px",border:"1px solid #b0c8b0",borderRadius:4,fontSize:13,textAlign:"center"}} />
+                                  </td>
+                                  <td style={{padding:"4px 6px",border:"1px solid #c8e6c9",textAlign:"center",color:"#c0392b",fontWeight:600}}>
+                                    ₹{((parseFloat(fs.area)||0)*1000).toLocaleString("en-IN")}
+                                  </td>
+                                  <td style={{padding:"4px 6px",border:"1px solid #c8e6c9",textAlign:"center"}}>
+                                    <button onClick={()=>{const a=(so.foundationSeeds||[]).filter((_,k)=>k!==fi);updateSO({...so,foundationSeeds:a});}}
+                                      style={{background:"#fdecea",color:"#e74c3c",border:"1px solid #e74c3c",borderRadius:4,padding:"2px 8px",cursor:"pointer",fontSize:12}}>✕</button>
+                                  </td>
+                                </tr>
+                              ))}
+                              <tr style={{background:"#e8f5e9",fontWeight:700}}>
+                                <td style={{padding:"5px 8px",border:"1px solid #c8e6c9"}}>TOTAL</td>
+                                <td style={{padding:"5px 8px",border:"1px solid #c8e6c9",textAlign:"center"}}>{(so.foundationSeeds||[]).reduce((s,f)=>s+(parseFloat(f.area)||0),0)} Ac</td>
+                                <td style={{padding:"5px 8px",border:"1px solid #c8e6c9",textAlign:"center",color:"#c0392b"}}>₹{((so.foundationSeeds||[]).reduce((s,f)=>s+(parseFloat(f.area)||0),0)*1000).toLocaleString("en-IN")}</td>
+                                <td style={{border:"1px solid #c8e6c9"}}></td>
+                              </tr>
+                            </tbody>
+                          </table>
                         )}
                       </div>
 
