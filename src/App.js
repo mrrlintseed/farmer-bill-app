@@ -2596,14 +2596,15 @@ export default function App() {
                         <style>body{font-family:Georgia,serif;padding:20px;}h2{color:#1a2a4a;}table{border-collapse:collapse;width:100%;font-size:12px;}th{background:#1a2a4a;color:#fff;padding:7px 10px;border:1px solid #ddd;}.total-row td{font-weight:800;background:#e8f0ff;border-top:2px solid #1a2a4a;}@media print{@page{margin:8mm;size:A4 landscape;}}</style>
                         </head><body><h2>📊 Sub-Org Summary</h2>
                         <div style="font-size:13px;color:#555;margin-bottom:10px;">Bill Date: ${fmtDate(BILL_DATE)} | Total Sub-Orgs: ${subOrgs.length}</div>
-                        <table><thead><tr><th>Acc No</th><th>Sub-Org Name</th><th>Village</th><th>Growers</th><th>Qty</th><th>Crop Value</th><th>Adv+Int</th><th>Balance</th></tr></thead>
+                        <table><thead><tr><th>Acc No</th><th>Sub-Org Name</th><th>Village</th><th>Growers</th><th>Qty</th><th>Crop Value</th><th>Adv+Int</th><th>Bal to Pay</th><th>Bal Due</th></tr></thead>
                         <tbody>${rows}
                         <tr class="total-row"><td colspan="3">GRAND TOTAL</td>
                           <td style="text-align:right;padding:6px 10px;border:1px solid #ddd;">${subOrgs.reduce((s,so)=>s+(so.growers||[]).length,0)}</td>
                           <td style="text-align:right;padding:6px 10px;border:1px solid #ddd;">${grandQty.toLocaleString("en-IN")}</td>
                           <td style="text-align:right;padding:6px 10px;border:1px solid #ddd;">₹${Math.round(grandCrop).toLocaleString("en-IN")}</td>
                           <td style="text-align:right;padding:6px 10px;border:1px solid #ddd;color:#c0392b;">₹${Math.round(grandAdv).toLocaleString("en-IN")}</td>
-                          <td style="text-align:right;padding:6px 10px;border:1px solid #ddd;">Pay:₹${Math.round(grandPay).toLocaleString("en-IN")} Due:₹${Math.round(grandDue).toLocaleString("en-IN")}</td>
+                          <td style="text-align:right;padding:6px 10px;border:1px solid #ddd;font-weight:800;color:#1a5c1a;">₹${Math.round(grandPay).toLocaleString("en-IN")}</td>
+          <td style="text-align:right;padding:6px 10px;border:1px solid #ddd;font-weight:800;color:#c0392b;">₹${Math.round(grandDue).toLocaleString("en-IN")}</td>
                         </tr></tbody></table></body></html>`;
                       const w=window.open("","_blank"); w.document.write(html); w.document.close(); setTimeout(()=>w.print(),400);
                     }} style={{background:"#1a2a4a",color:"#fff",border:"none",borderRadius:6,padding:"9px 16px",fontWeight:700,fontSize:13,cursor:"pointer"}}>🖨️ Print Summary</button>
@@ -2629,7 +2630,7 @@ export default function App() {
                     <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
                       <thead>
                         <tr style={{background:"#1a2a4a",color:"#fff"}}>
-                          {["Acc No","Sub-Org Name","Village","Growers","Total Qty","Crop Value","Adv+Int","Balance"].map(h=>(
+                          {["Acc No","Sub-Org Name","Village","Growers","Total Qty","Crop Value","Adv+Int","Bal to Pay","Bal Due"].map(h=>(
                             <th key={h} style={{padding:"8px 10px",textAlign:h==="Sub-Org Name"||h==="Village"?"left":"center",fontWeight:600,fontSize:12}}>{h}</th>
                           ))}
                         </tr>
@@ -2646,8 +2647,11 @@ export default function App() {
                             <td style={{padding:"8px 10px",textAlign:"center",fontWeight:600}}>{totalQty.toLocaleString("en-IN")}</td>
                             <td style={{padding:"8px 10px",textAlign:"right",fontWeight:600,color:"#1a5c1a"}}>{fmt(totalCropVal)}</td>
                             <td style={{padding:"8px 10px",textAlign:"right",color:"#c0392b"}}>{fmt(totalAdvWI)}</td>
-                            <td style={{padding:"8px 10px",textAlign:"right",fontWeight:700,color:balance>=0?"#1a5c1a":"#c0392b"}}>
-                              {fmt(balance)} <span style={{fontSize:10,fontWeight:400}}>({balance>=0?"Pay":"Due"})</span>
+                            <td style={{padding:"8px 10px",textAlign:"right",fontWeight:700,color:"#1a5c1a"}}>
+                              {balance>=0?fmt(balance):"—"}
+                            </td>
+                            <td style={{padding:"8px 10px",textAlign:"right",fontWeight:700,color:"#c0392b"}}>
+                              {balance<0?fmt(Math.abs(balance)):"—"}
                             </td>
                           </tr>
                         ))}
@@ -2657,10 +2661,8 @@ export default function App() {
                           <td style={{padding:"8px 10px",textAlign:"center"}}>{grandQty.toLocaleString("en-IN")}</td>
                           <td style={{padding:"8px 10px",textAlign:"right",color:"#1a5c1a"}}>{fmt(grandCrop)}</td>
                           <td style={{padding:"8px 10px",textAlign:"right",color:"#c0392b"}}>{fmt(grandAdv)}</td>
-                          <td style={{padding:"8px 10px",textAlign:"right"}}>
-                            <span style={{color:"#1a5c1a"}}>Pay: {fmt(grandPay)}</span>
-                            <span style={{color:"#c0392b",marginLeft:8}}>Due: {fmt(grandDue)}</span>
-                          </td>
+                          <td style={{padding:"8px 10px",textAlign:"right",fontWeight:700,color:"#1a5c1a"}}>{fmt(grandPay)}</td>
+                          <td style={{padding:"8px 10px",textAlign:"right",fontWeight:700,color:"#c0392b"}}>{fmt(grandDue)}</td>
                         </tr>
                       </tbody>
                     </table>
