@@ -47,6 +47,23 @@ function calcInterest(amount, rate, fromDate, billDate) {
   const to = parseLocalDate(billDate || BILL_DATE);
   const days = Math.max(1, Math.round((to - from) / 86400000));
   return { days, interest: Math.round((amount * rate * days) / (100 * 30 * 12)) };
+
+// Compound interest — compounds yearly
+function calcCompoundInterest(amount, rate, fromDate, billDate) {
+  const from = parseLocalDate(fromDate);
+  const to = parseLocalDate(billDate || BILL_DATE);
+  const totalDays = Math.max(1, Math.round((to - from) / 86400000));
+  const fullYears = Math.floor(totalDays / 365);
+  const remainingDays = totalDays % 365;
+  let principal = amount;
+  for (let y = 0; y < fullYears; y++) {
+    const yearInterest = Math.round((principal * rate * 365) / (100 * 30 * 12));
+    principal = principal + yearInterest;
+  }
+  const remainingInterest = remainingDays > 0 ? Math.round((principal * rate * remainingDays) / (100 * 30 * 12)) : 0;
+  const totalInterest = principal + remainingInterest - amount;
+  return { days: totalDays, interest: Math.round(totalInterest) };
+}
 }
 
 function printBill(elementId, filename) {
@@ -99,7 +116,7 @@ function BillPreview({ farmer, varietySettings, getVarietyBillDate, isVarietyPai
     // Use earliest paid variety bill date for advance interest
     const paidDates = (farmer.crops||[]).filter(c=>c.result==="Pass"&&_isVarietyPaid(c.variety)).map(c=>_getVarietyBillDate(c.variety));
     const advBillDate = a.tillDate || (paidDates.length > 0 ? paidDates.reduce((a,b)=>a<b?a:b) : BILL_DATE);
-    const { days, interest } = calcInterest(a.amount, a.interestRate, a.date, advBillDate);
+    const { days, interest } = (a.compound?calcCompoundInterest:calcInterest)(a.amount, a.interestRate, a.date, advBillDate);
     return { ...a, days, interest, total: a.amount + interest };
   });
   const totalAdv = advCalc.reduce((s, a) => s + a.amount, 0);
@@ -322,7 +339,7 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
   };
   const advCalc = (_billMode === "partial" ? [] : (so.advances || [])).map(a => {
     const advBillDate = a.tillDate || getAdvBillDate();
-    const { days, interest } = calcInterest(parseFloat(a.amount) || 0, parseFloat(a.interestRate) || 0, a.date, advBillDate);
+    const { days, interest } = (a.compound?calcCompoundInterest:calcInterest)(parseFloat(a.amount) || 0, parseFloat(a.interestRate) || 0, a.date, advBillDate);
     return { ...a, days, interest, total: (parseFloat(a.amount) || 0) + interest };
   });
   const totalAdv = advCalc.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
@@ -803,6 +820,17 @@ function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVar
                   + Set custom interest end date
                 </button>
               )}
+              {/* Compound interest toggle — only show if advance is 1+ year old */}
+              {(()=>{
+                const advDays = Math.round((parseLocalDate(a.tillDate||BILL_DATE)-parseLocalDate(a.date))/86400000);
+                if (advDays < 365) return null;
+                return (
+                  <button onClick={()=>updAdv(i,"compound",!a.compound)}
+                    style={{fontSize:10,padding:"2px 10px",borderRadius:4,border:a.compound?"1px solid #6a0dad":"1px dashed #9b59b6",background:a.compound?"#f3e5ff":"#fdf5ff",color:a.compound?"#6a0dad":"#9b59b6",cursor:"pointer",fontWeight:a.compound?700:400}}>
+                    {a.compound?"✓ Compound Yearly":"⟳ Compound Yearly?"}
+                  </button>
+                );
+              })()}
             </div>
           </div>
         ))}
@@ -1237,7 +1265,7 @@ export default function App() {
     });
     const paidDates=(f.crops||[]).filter(c=>c.result==="Pass"&&isVarietyPaid(c.variety)).map(c=>getVarietyBillDate(c.variety));
     const billDate=paidDates.length>0?paidDates.reduce((a,b)=>a<b?a:b):BILL_DATE;
-    const advWI=(f.advances||[]).reduce((s,a)=>{const bd=a.tillDate||billDate;const {interest}=calcInterest(a.amount,a.interestRate,a.date,bd);return s+a.amount+interest;},0);
+    const advWI=(f.advances||[]).reduce((s,a)=>{const bd=a.tillDate||billDate;const {interest}=(a.compound?calcCompoundInterest:calcInterest)(a.amount,a.interestRate,a.date,bd);return s+a.amount+interest;},0);
     const jamWI=(f.jammaEnabled?f.jammaEntries||[]:[]).reduce((s,j)=>{const bd=j.tillDate||billDate;const {interest}=calcInterest(parseFloat(j.amount)||0,parseFloat(j.interestRate)||0,j.date||BILL_DATE,bd);return s+(parseFloat(j.amount)||0)+interest;},0);
     return cropVal-advWI+jamWI-found-trans;
   };
@@ -1499,7 +1527,7 @@ export default function App() {
         const a = (f.advances||[])[i];
         if (a) {
           const advBillDate = a.tillDate || billDate;
-          const {days, interest} = calcInterest(parseFloat(a.amount)||0, parseFloat(a.interestRate)||0, a.date, advBillDate);
+          const {days, interest} = (a.compound?calcCompoundInterest:calcInterest)(parseFloat(a.amount)||0, parseFloat(a.interestRate)||0, a.date, advBillDate);
           const total = (parseFloat(a.amount)||0) + interest;
           totalAdv += parseFloat(a.amount)||0;
           totalInt += interest;
@@ -2328,7 +2356,7 @@ export default function App() {
                       });
                       const paidDates=(f.crops||[]).filter(c=>c.result==="Pass"&&isVarietyPaid(c.variety)).map(c=>getVarietyBillDate(c.variety));
                       const billDate=paidDates.length>0?paidDates.reduce((a,b)=>a<b?a:b):BILL_DATE;
-                      const advWI=(f.advances||[]).reduce((s,a)=>{const bd=a.tillDate||billDate;const {interest}=calcInterest(a.amount,a.interestRate,a.date,bd);return s+a.amount+interest;},0);
+                      const advWI=(f.advances||[]).reduce((s,a)=>{const bd=a.tillDate||billDate;const {interest}=(a.compound?calcCompoundInterest:calcInterest)(a.amount,a.interestRate,a.date,bd);return s+a.amount+interest;},0);
                       const jamWI=(f.jammaEnabled?f.jammaEntries||[]:[]).reduce((s,j)=>{const bd=j.tillDate||billDate;const {interest}=calcInterest(parseFloat(j.amount)||0,parseFloat(j.interestRate)||0,j.date||BILL_DATE,bd);return s+(parseFloat(j.amount)||0)+interest;},0);
                       return cropVal-advWI+jamWI-found-trans;
                     };
@@ -2346,7 +2374,7 @@ export default function App() {
                           const billDate = BILL_DATE;
                           const advWI = (f.advances||[]).reduce((s,a)=>{
                             const bd=a.tillDate||billDate;
-                            const {interest}=calcInterest(parseFloat(a.amount)||0,parseFloat(a.interestRate)||0,a.date,bd);
+                            const {interest}=(a.compound?calcCompoundInterest:calcInterest)(parseFloat(a.amount)||0,parseFloat(a.interestRate)||0,a.date,bd);
                             return s+(parseFloat(a.amount)||0)+interest;
                           },0);
                           return {f, balance:-advWI, noSeed:true};
@@ -2555,7 +2583,7 @@ export default function App() {
               const fmt = n => `₹${Math.abs(Math.round(n)).toLocaleString("en-IN")}`;
               const soSummary = subOrgs.map(so => {
                 const totalAdvWI = (so.advances||[]).reduce((s,a) => {
-                  const {interest} = calcInterest(a.amount, a.interestRate, a.date, BILL_DATE);
+                  const {interest} = (a.compound?calcCompoundInterest:calcInterest)(a.amount, a.interestRate, a.date, BILL_DATE);
                   return s + a.amount + interest;
                 }, 0);
                 const passGrowers = (so.growers||[]).filter(g=>g.result==="Pass");
@@ -2754,6 +2782,17 @@ export default function App() {
                                 </button>
                               )}
                             </div>
+                              {/* Compound toggle for sub-org advances */}
+                              {(()=>{
+                                const advDays = Math.round((parseLocalDate(a.tillDate||BILL_DATE)-parseLocalDate(a.date))/86400000);
+                                if (advDays < 365) return null;
+                                return (
+                                  <button onClick={()=>{const arr=[...so.advances];arr[i]={...arr[i],compound:!a.compound};updateSO({...so,advances:arr});}}
+                                    style={{fontSize:10,padding:"2px 10px",borderRadius:4,border:a.compound?"1px solid #6a0dad":"1px dashed #9b59b6",background:a.compound?"#f3e5ff":"#fdf5ff",color:a.compound?"#6a0dad":"#9b59b6",cursor:"pointer",fontWeight:a.compound?700:400}}>
+                                    {a.compound?"✓ Compound Yearly":"⟳ Compound Yearly?"}
+                                  </button>
+                                );
+                              })()}
                           </div>
                         ))}
                         <button onClick={()=>updateSO({...so,advances:[...(so.advances||[]),{date:new Date().toISOString().split("T")[0],amount:0,interestRate:24,note:""}]})} style={{background:"#e8f0ff",color:"#2d5a8a",border:"1px dashed #2d5a8a",borderRadius:4,padding:"4px 12px",cursor:"pointer",fontSize:12}}>+ Add Advance</button>
@@ -3391,7 +3430,7 @@ export default function App() {
 
                 // Full advance+interest for this farmer using variety bill date
                 const fAdvWI = (f.advances||[]).reduce((s,a) => {
-                  const {interest} = calcInterest(a.amount, a.interestRate, a.date, billDate);
+                  const {interest} = (a.compound?calcCompoundInterest:calcInterest)(a.amount, a.interestRate, a.date, billDate);
                   return s + a.amount + interest;
                 }, 0);
                 const fJamWI = ((f.jammaEnabled?f.jammaEntries||[]:[]).reduce((s,j) => {
