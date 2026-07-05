@@ -4072,21 +4072,24 @@ function calcInterest(amount, rate, fromDate, billDate) {
   return { days, interest: Math.round((amount * rate * days) / (100 * 30 * 12)) };
 }
 
-function calcCompoundInterestLocal(amount, rate, fromDate, billDate) {
-  if (!amount || !rate || !fromDate) return { days: 0, interest: 0 };
-  const from = parseLocalDate(fromDate);
-  const to = parseLocalDate(billDate || BILL_DATE);
-  const totalDays = Math.max(1, Math.round((to - from) / 86400000));
-  if (totalDays < 365) return { days: totalDays, interest: Math.round((amount * rate * totalDays) / (100 * 30 * 12)) };
-  const fullYears = Math.floor(totalDays / 365);
-  const remainingDays = totalDays % 365;
-  let principal = parseFloat(amount) || 0;
-  const r = parseFloat(rate) || 0;
-  for (let y = 0; y < fullYears; y++) {
-    principal = principal + Math.round((principal * r * 365) / (100 * 30 * 12));
-  }
-  const remainingInterest = remainingDays > 0 ? Math.round((principal * r * remainingDays) / (100 * 30 * 12)) : 0;
-  return { days: totalDays, interest: Math.round(principal + remainingInterest - (parseFloat(amount) || 0)) };
+function calcCompoundInterest(amount, rate, fromDate, billDate) {
+  try {
+    const amt = parseFloat(amount) || 0;
+    const r = parseFloat(rate) || 0;
+    if (!amt || !r || !fromDate) return { days: 0, interest: 0 };
+    const from = parseLocalDate(fromDate);
+    const to = parseLocalDate(billDate || BILL_DATE);
+    const totalDays = Math.max(1, Math.round((to - from) / 86400000));
+    if (totalDays < 365) return { days: totalDays, interest: Math.round((amt * r * totalDays) / (100 * 30 * 12)) };
+    const fullYears = Math.floor(totalDays / 365);
+    const remainingDays = totalDays % 365;
+    let principal = amt;
+    for (let y = 0; y < fullYears; y++) {
+      principal = principal + Math.round((principal * r * 365) / (100 * 30 * 12));
+    }
+    const remainingInterest = remainingDays > 0 ? Math.round((principal * r * remainingDays) / (100 * 30 * 12)) : 0;
+    return { days: totalDays, interest: Math.round(principal + remainingInterest - amt) };
+  } catch(e) { return { days: 0, interest: 0 }; }
 }
 
 function printBill(elementId, filename) {
