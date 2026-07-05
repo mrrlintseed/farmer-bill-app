@@ -50,18 +50,21 @@ function calcInterest(amount, rate, fromDate, billDate) {
 
 // Compound interest — compounds yearly
 function calcCompoundInterest(amount, rate, fromDate, billDate) {
+  if (!amount || !rate || !fromDate) return { days: 0, interest: 0 };
   const from = parseLocalDate(fromDate);
   const to = parseLocalDate(billDate || BILL_DATE);
   const totalDays = Math.max(1, Math.round((to - from) / 86400000));
+  if (totalDays < 365) return { days: totalDays, interest: Math.round((amount * rate * totalDays) / (100 * 30 * 12)) };
   const fullYears = Math.floor(totalDays / 365);
   const remainingDays = totalDays % 365;
-  let principal = amount;
+  let principal = parseFloat(amount) || 0;
+  const r = parseFloat(rate) || 0;
   for (let y = 0; y < fullYears; y++) {
-    const yearInterest = Math.round((principal * rate * 365) / (100 * 30 * 12));
+    const yearInterest = Math.round((principal * r * 365) / (100 * 30 * 12));
     principal = principal + yearInterest;
   }
-  const remainingInterest = remainingDays > 0 ? Math.round((principal * rate * remainingDays) / (100 * 30 * 12)) : 0;
-  const totalInterest = principal + remainingInterest - amount;
+  const remainingInterest = remainingDays > 0 ? Math.round((principal * r * remainingDays) / (100 * 30 * 12)) : 0;
+  const totalInterest = principal + remainingInterest - (parseFloat(amount) || 0);
   return { days: totalDays, interest: Math.round(totalInterest) };
 }
 }
@@ -3257,7 +3260,7 @@ export default function App() {
       {mode==="dashboard"&&(()=>{
         const allF=farmers||[];
         const fStats=allF.map(f=>{
-          const advWI=(f.advances||[]).reduce((s,a)=>{const{interest}=calcInterest(a.amount,a.interestRate,a.date);return s+a.amount+interest;},0);
+          const advWI=(f.advances||[]).reduce((s,a)=>{const{interest}=(a.compound?calcCompoundInterest:calcInterest)(a.amount,a.interestRate,a.date);return s+a.amount+interest;},0);
           const cCalc=(f.crops||[]).map(c=>{const area=parseFloat(c.area)||0,qty=parseFloat(c.quantity)||0;return{value:c.result==="Pass"?qty*(parseFloat(c.ratePerUnit)||0):0,foundation:area*1000,transport:qty};});
           const cropVal=cCalc.reduce((s,c)=>s+c.value,0);
           const found=cCalc.reduce((s,c)=>s+c.foundation,0);
@@ -3278,7 +3281,7 @@ export default function App() {
         const villages=Object.entries(vMap).sort((a,b)=>b[1].cropVal-a[1].cropVal);
         const maxVC=Math.max(...villages.map(([,v])=>v.cropVal),1);
         const soStats=subOrgs.map(so=>{
-          const advWI=(so.advances||[]).reduce((s,a)=>{const{interest}=calcInterest(parseFloat(a.amount)||0,parseFloat(a.interestRate)||0,a.date);return s+(parseFloat(a.amount)||0)+interest;},0);
+          const advWI=(so.advances||[]).reduce((s,a)=>{const{interest}=(a.compound?calcCompoundInterest:calcInterest)(parseFloat(a.amount)||0,parseFloat(a.interestRate)||0,a.date);return s+(parseFloat(a.amount)||0)+interest;},0);
           const g=so.growers||[];
           const seedAmt=g.filter(gr=>gr.result==="Pass").reduce((s,gr)=>s+(parseFloat(gr.packets)||0)*(parseFloat(gr.rate)||0),0);
           const found=g.reduce((s,gr)=>s+(parseFloat(gr.area)||0)*1000,0);
@@ -4060,6 +4063,23 @@ function calcInterest(amount, rate, fromDate, billDate) {
   const to = parseLocalDate(billDate || BILL_DATE);
   const days = Math.max(1, Math.round((to - from) / 86400000));
   return { days, interest: Math.round((amount * rate * days) / (100 * 30 * 12)) };
+}
+
+function calcCompoundInterestLocal(amount, rate, fromDate, billDate) {
+  if (!amount || !rate || !fromDate) return { days: 0, interest: 0 };
+  const from = parseLocalDate(fromDate);
+  const to = parseLocalDate(billDate || BILL_DATE);
+  const totalDays = Math.max(1, Math.round((to - from) / 86400000));
+  if (totalDays < 365) return { days: totalDays, interest: Math.round((amount * rate * totalDays) / (100 * 30 * 12)) };
+  const fullYears = Math.floor(totalDays / 365);
+  const remainingDays = totalDays % 365;
+  let principal = parseFloat(amount) || 0;
+  const r = parseFloat(rate) || 0;
+  for (let y = 0; y < fullYears; y++) {
+    principal = principal + Math.round((principal * r * 365) / (100 * 30 * 12));
+  }
+  const remainingInterest = remainingDays > 0 ? Math.round((principal * r * remainingDays) / (100 * 30 * 12)) : 0;
+  return { days: totalDays, interest: Math.round(principal + remainingInterest - (parseFloat(amount) || 0)) };
 }
 
 function printBill(elementId, filename) {
