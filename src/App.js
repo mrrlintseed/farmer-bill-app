@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { saveToCloud, loadFromCloud, saveSnapshot, getSnapshots, restoreSnapshot } from "./firebase";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
@@ -129,8 +129,17 @@ function BillPreview({ farmer, varietySettings, getVarietyBillDate, isVarietyPai
     const { days, interest } = (a.compound?calcCompoundInterest:calcInterest)(a.amount, a.interestRate, a.date, advBillDate);
     return { ...a, days, interest, total: a.amount + interest };
   });
-  const totalAdv = advCalc.reduce((s, a) => s + a.amount, 0);
-  const totalAdvInt = advCalc.reduce((s, a) => s + a.interest, 0);
+  // For settlement summary — only count the LAST entry of each carry-forward chain
+  // Identify carry-forward entries by note starting with "Carried from"
+  const isCarryEntry = (a) => (a.note||"").startsWith("Carried from");
+  // An advance is intermediate if another carry-forward entry has the same amount as this advance's total
+  const isIntermediate = (a) => {
+    const myTotal = Math.round(a.total);
+    return advCalc.some(b => isCarryEntry(b) && Math.round(b.amount) === myTotal);
+  };
+  const finalAdvances = advCalc.filter(a => !isIntermediate(a));
+  const totalAdv = finalAdvances.reduce((s, a) => s + a.amount, 0);
+  const totalAdvInt = finalAdvances.reduce((s, a) => s + a.interest, 0);
   const totalAdvWithInt = totalAdv + totalAdvInt;
 
   const cropsCalc = (farmer.crops || []).map(c => {
@@ -180,36 +189,108 @@ function BillPreview({ farmer, varietySettings, getVarietyBillDate, isVarietyPai
           </div>
         </div>
 
-        {/* Advances */}
-        {advCalc.length > 0 && (
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontWeight: 700, color: "#1a4a1a", marginBottom: 5, fontSize: 12 }}>ADVANCE DETAILS | అడ్వాన్స్ వివరాలు</div>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 480 }}>
-                <thead><tr style={{ background: "#2d6a2d", color: "#fff" }}><TH ch="S.No" /><TH ch="Date" /><TH ch="Note" /><TH ch="Amount(₹)" /><TH ch="Days" /><TH ch="Interest(₹)" /><TH ch="Total(₹)" /></tr></thead>
-                <tbody>
-                  {advCalc.map((a, i) => (
-                    <tr key={i} style={{ background: i % 2 === 0 ? "#f9fdf9" : "#fff", borderBottom: "1px solid #d4e8d4" }}>
-                      <TD ch={i + 1} />
-                      <TD ch={fmtDate(a.date)} />
-                      <TD ch={a.note || "—"} />
-                      <TD ch={`₹${a.amount.toLocaleString("en-IN")}`} />
-                      <TD ch={a.days} />
-                      <TD ch={`₹${a.interest.toLocaleString("en-IN")}`} s={{ color: "#c0392b" }} />
-                      <TD ch={`₹${a.total.toLocaleString("en-IN")}`} s={{ fontWeight: 600 }} />
-                    </tr>
-                  ))}
-                  <tr style={{ background: "#e8f5e9", fontWeight: 700 }}>
-                    <td colSpan={3} style={{ padding: "4px 6px", fontSize: 11, color: "#1a4a1a" }}>TOTAL</td>
-                    <TD ch={`₹${totalAdv.toLocaleString("en-IN")}`} /><TD ch="" />
-                    <TD ch={`₹${totalAdvInt.toLocaleString("en-IN")}`} s={{ color: "#c0392b" }} />
-                    <TD ch={`₹${totalAdvWithInt.toLocaleString("en-IN")}`} />
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+        {/* Advances — single table normally, split only when carry-forward is used */}
+        {advCalc.length > 0 && (() => {
+          const hasCarryForward = advCalc.some(a => a.carryForwardFrom !== undefined && a.carryForwardFrom !== null && a.carryForwardFrom !== "");
+
+          if (!hasCarryForward) {
+            // Single table — original behavior
+            return (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontWeight: 700, color: "#1a4a1a", marginBottom: 5, fontSize: 12 }}>ADVANCE DETAILS | అడ్వాన్స్ వివరాలు</div>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 480 }}>
+                    <thead><tr style={{ background: "#2d6a2d", color: "#fff" }}><TH ch="S.No" /><TH ch="Date" /><TH ch="Note" /><TH ch="Amount(₹)" /><TH ch="Days" /><TH ch="Interest(₹)" /><TH ch="Total(₹)" /></tr></thead>
+                    <tbody>
+                      {advCalc.map((a, i) => (
+                        <tr key={i} style={{ background: i % 2 === 0 ? "#f9fdf9" : "#fff", borderBottom: "1px solid #d4e8d4" }}>
+                          <TD ch={i + 1} />
+                          <TD ch={fmtDate(a.date)} />
+                          <TD ch={a.note || "—"} />
+                          <TD ch={`₹${a.amount.toLocaleString("en-IN")}`} />
+                          <TD ch={a.days} />
+                          <TD ch={`₹${a.interest.toLocaleString("en-IN")}`} s={{ color: "#c0392b" }} />
+                          <TD ch={`₹${a.total.toLocaleString("en-IN")}`} s={{ fontWeight: 600 }} />
+                        </tr>
+                      ))}
+                      <tr style={{ background: "#e8f5e9", fontWeight: 700 }}>
+                        <td colSpan={3} style={{ padding: "4px 6px", fontSize: 11, color: "#1a4a1a" }}>TOTAL</td>
+                        <TD ch={`₹${totalAdv.toLocaleString("en-IN")}`} /><TD ch="" />
+                        <TD ch={`₹${totalAdvInt.toLocaleString("en-IN")}`} s={{ color: "#c0392b" }} />
+                        <TD ch={`₹${totalAdvWithInt.toLocaleString("en-IN")}`} />
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          }
+
+          // Carry-forward mode — separate tables per chain
+          const chains = [];
+          const used = new Set();
+          advCalc.forEach((a, i) => {
+            if (used.has(i)) return;
+            if (a.carryForwardFrom !== undefined && a.carryForwardFrom !== null && a.carryForwardFrom !== "") return;
+            const chain = [{ ...a, _idx: i }];
+            used.add(i);
+            let currentCfId = a.cfId;
+            while (currentCfId) {
+              let nextFound = false;
+              advCalc.forEach((b, j) => {
+                if (!used.has(j) && b.carryForwardFrom === currentCfId) {
+                  chain.push({ ...b, _idx: j });
+                  used.add(j);
+                  currentCfId = b.cfId;
+                  nextFound = true;
+                }
+              });
+              if (!nextFound) break;
+            }
+            chains.push(chain);
+          });
+          advCalc.forEach((a, i) => {
+            if (!used.has(i)) { chains.push([{ ...a, _idx: i }]); used.add(i); }
+          });
+
+          return chains.map((chain, ci) => {
+            const chainAdv = chain.reduce((s, a) => s + a.amount, 0);
+            const chainInt = chain.reduce((s, a) => s + a.interest, 0);
+            const chainTotal = chain[chain.length - 1].total;
+            return (
+              <div key={ci} style={{ marginBottom: 14 }}>
+                <div style={{ fontWeight: 700, color: "#1a4a1a", marginBottom: 5, fontSize: 12, display:"flex", alignItems:"center", gap:8 }}>
+                  ADVANCE DETAILS | అడ్వాన్స్ వివరాలు
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", background:"#2d6a2d", padding:"1px 10px", borderRadius:10 }}>Part {ci + 1}</span>
+                </div>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 480 }}>
+                    <thead><tr style={{ background: "#2d6a2d", color: "#fff" }}><TH ch="S.No" /><TH ch="Date" /><TH ch="Note" /><TH ch="Amount(₹)" /><TH ch="Days" /><TH ch="Interest(₹)" /><TH ch="Total(₹)" /></tr></thead>
+                    <tbody>
+                      {chain.map((a, i) => (
+                        <tr key={i} style={{ background: i % 2 === 0 ? "#f9fdf9" : "#fff", borderBottom: "1px solid #d4e8d4" }}>
+                          <TD ch={i + 1} />
+                          <TD ch={fmtDate(a.date)} />
+                          <TD ch={a.note || "—"} />
+                          <TD ch={`₹${a.amount.toLocaleString("en-IN")}`} />
+                          <TD ch={a.days} />
+                          <TD ch={`₹${a.interest.toLocaleString("en-IN")}`} s={{ color: "#c0392b" }} />
+                          <TD ch={`₹${a.total.toLocaleString("en-IN")}`} s={{ fontWeight: 600 }} />
+                        </tr>
+                      ))}
+                      <tr style={{ background: "#e8f5e9", fontWeight: 700 }}>
+                        <td colSpan={3} style={{ padding: "4px 6px", fontSize: 11, color: "#1a4a1a" }}>TOTAL</td>
+                        <TD ch={`₹${chainAdv.toLocaleString("en-IN")}`} /><TD ch="" />
+                        <TD ch={`₹${chainInt.toLocaleString("en-IN")}`} s={{ color: "#c0392b" }} />
+                        <TD ch={`₹${chainTotal.toLocaleString("en-IN")}`} />
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          });
+        })()}
 
         {/* Crops */}
         {cropsCalc.length > 0 && (
@@ -830,6 +911,26 @@ function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVar
                   + Set custom interest end date
                 </button>
               )}
+              {/* Carry Forward button — only when tillDate is set */}
+              {a.tillDate && (() => {
+                const {interest} = calcInterest(parseFloat(a.amount)||0, parseFloat(a.interestRate)||0, a.date, a.tillDate);
+                const carryAmt = (parseFloat(a.amount)||0) + interest;
+                // Only show if no carry-forward already exists from this advance
+                const alreadyCarried = (farmer.advances||[]).some(x => x.carryForwardFrom === (a.cfId||`cf_${i}`));
+                if (alreadyCarried) return <span style={{fontSize:10,color:"#1a5c1a",padding:"2px 8px"}}>✓ Carried forward</span>;
+                return (
+                  <button onClick={()=>{
+                    const cfId = a.cfId || `cf_${Date.now()}`;
+                    // Update original advance with cfId if not set
+                    const updatedAdvances = [...(farmer.advances||[])];
+                    if (!updatedAdvances[i].cfId) updatedAdvances[i] = {...updatedAdvances[i], cfId};
+                    const newAdv = { date: a.tillDate, amount: carryAmt, interestRate: a.interestRate, note: `Carried from ${fmtDate(a.date)}`, carryForwardFrom: cfId };
+                    onChange({...farmer, advances:[...updatedAdvances, newAdv]});
+                  }} style={{fontSize:10,padding:"2px 10px",borderRadius:4,border:"1px solid #1a6a1a",background:"#e8f5e9",color:"#1a6a1a",cursor:"pointer",fontWeight:600}}>
+                    ↪ Carry Forward (₹{carryAmt.toLocaleString("en-IN")})
+                  </button>
+                );
+              })()}
               {/* Compound interest toggle — only show if advance is 1+ year old */}
               {(()=>{
                 const advDays = Math.round((parseLocalDate(a.tillDate||BILL_DATE)-parseLocalDate(a.date))/86400000);
@@ -1174,11 +1275,81 @@ export default function App() {
   };
   const [selectedPrintVarieties, setSelectedPrintVarieties] = useState([]); // empty = all varieties
   const [pesticideList, setPesticideList] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("pesticide_list") || "[]"); } catch { return []; }
+    try {
+      const raw = JSON.parse(localStorage.getItem("pesticide_list") || "[]");
+      if (raw.length > 0) {
+        // Migrate old format {name, price} to new format {name, sizes:[{size, price}]}
+        const migrated = raw.map(p => {
+          if (p.sizes) return p;
+          return { name: p.name||"", sizes: [{ size: "", price: parseFloat(p.price)||0 }] };
+        });
+        localStorage.setItem("pesticide_list", JSON.stringify(migrated));
+        return migrated;
+      }
+      // No data — use default list from price list
+      const defaults = [
+        { name: "Adora XL", sizes: [{ size: "250ml", price: 550 }] },
+        { name: "GA Boran", sizes: [{ size: "250g", price: 180 }, { size: "500g", price: 350 }, { size: "1000g", price: 685 }] },
+        { name: "GA Magic", sizes: [{ size: "1000g", price: 150 }] },
+        { name: "Glowet Silicon", sizes: [{ size: "100ml", price: 280 }] },
+        { name: "Nuzimax 13-45", sizes: [{ size: "250ml", price: 650 }] },
+        { name: "Zordhar Plus", sizes: [{ size: "500ml", price: 1000 }] },
+        { name: "GA Cabin", sizes: [{ size: "500ml", price: 825 }] },
+        { name: "Nuzimax 19x3", sizes: [{ size: "500ml", price: 1200 }] },
+        { name: "Chamathkar", sizes: [{ size: "100ml", price: 100 }, { size: "250ml", price: 225 }] },
+        { name: "Tilt", sizes: [{ size: "500ml", price: 453 }] },
+        { name: "Ergon Plus", sizes: [{ size: "250ml", price: 911.5 }] },
+        { name: "Traps", sizes: [{ size: "", price: 23.3 }] },
+      ];
+      localStorage.setItem("pesticide_list", JSON.stringify(defaults));
+      // Will be synced to Firebase on next savePesticideList call
+      return defaults;
+    } catch { return []; }
   });
   const savePesticideList = (list) => {
     setPesticideList(list);
     localStorage.setItem("pesticide_list", JSON.stringify(list));
+
+    // Update all farmer advances that were created from pesticides
+    // Match by note format: "PesticideName Size ×Qty"
+    const updatedFarmers = (farmers||[]).map(f => {
+      const updatedAdvances = (f.advances||[]).map(a => {
+        if (!a.note) return a;
+        // Try to match note pattern: "Name Size ×Qty" or "Name ×Qty"
+        const match = a.note.match(/^(.+?)\s+×(\d+(?:\.\d+)?)$/);
+        if (!match) return a;
+        const noteText = match[1].trim(); // e.g. "Nuzimax 13-45 250ml"
+        const qty = parseFloat(match[2]);
+        // Find matching pesticide+size in new list
+        for (const p of list) {
+          if (!p.name) continue;
+          for (const s of (p.sizes||[])) {
+            const expectedNote = s.size ? `${p.name} ${s.size}` : p.name;
+            if (noteText === expectedNote && s.price) {
+              const newAmount = Math.round(s.price * qty);
+              if (newAmount !== a.amount) {
+                return { ...a, amount: newAmount, note: `${expectedNote} ×${qty}` };
+              }
+            }
+          }
+        }
+        return a;
+      });
+      return { ...f, advances: updatedAdvances };
+    });
+
+    // Only update if something changed
+    const hasChanges = updatedFarmers.some((f, i) =>
+      JSON.stringify(f.advances) !== JSON.stringify((farmers||[])[i]?.advances)
+    );
+    if (hasChanges) updateFarmers(updatedFarmers);
+
+    // Also save to Firebase
+    if (cloudSaveTimer.current) clearTimeout(cloudSaveTimer.current);
+    cloudSaveTimer.current = setTimeout(async () => {
+      const currentVS = JSON.parse(localStorage.getItem("variety_settings") || "{}");
+      await saveToCloud(hasChanges ? updatedFarmers : (farmers||[]), subOrgs||[], {...currentVS, __pesticideList: list});
+    }, 2000);
   };
   const [varietySettings, setVarietySettings] = useState(() => {
     try { const s = localStorage.getItem("variety_settings"); return s ? JSON.parse(s) : {}; } catch { return {}; }
@@ -1300,8 +1471,17 @@ export default function App() {
         setFarmers(cloud.farmers);
         setSubOrgs(cloud.subOrgs || []);
         if (cloud.varietySettings && Object.keys(cloud.varietySettings).length > 0) {
-          setVarietySettings(cloud.varietySettings);
-          localStorage.setItem("variety_settings", JSON.stringify(cloud.varietySettings));
+          // Extract pesticide list if stored inside varietySettings
+          const vs = {...cloud.varietySettings};
+          if (vs.__pesticideList) {
+            const pl = vs.__pesticideList;
+            delete vs.__pesticideList;
+            const migrated = pl.map(p => p.sizes ? p : {name:p.name||"", sizes:[{size:"",price:parseFloat(p.price)||0}]});
+            setPesticideList(migrated);
+            localStorage.setItem("pesticide_list", JSON.stringify(migrated));
+          }
+          setVarietySettings(vs);
+          localStorage.setItem("variety_settings", JSON.stringify(vs));
         }
         storage.saveFarmers(cloud.farmers);
         storage.saveSubOrgs(cloud.subOrgs || []);
@@ -1313,6 +1493,19 @@ export default function App() {
       setCloudStatus("idle");
     };
     loadData();
+  }, []);
+
+  // Sync pesticide list to Firebase after initial load (ensures defaults are saved)
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (pesticideList.length > 0) {
+        const currentVS = JSON.parse(localStorage.getItem("variety_settings") || "{}");
+        if (!currentVS.__pesticideList) {
+          await saveToCloud(farmers||[], subOrgs||[], {...currentVS, __pesticideList: pesticideList});
+        }
+      }
+    }, 5000); // 5 seconds after load
+    return () => clearTimeout(timer);
   }, []);
 
   const saveFarmers = async (data) => {
@@ -3643,8 +3836,8 @@ export default function App() {
                     const soRate = parseFloat((varietySettings[v.variety]||{}).rate||0) || (() => { for(const so of (subOrgs||[])){const g=(so.growers||[]).find(g=>g.variety===v.variety&&g.result==="Pass");if(g)return parseFloat(g.rate)||0;} return 0; })();
                     const soCropVal = (subOrgs||[]).reduce((s,so)=>(so.growers||[]).filter(g=>g.variety===v.variety&&g.result==="Pass").reduce((ss,g)=>ss+(parseFloat(g.packets)||0)*soRate,0)+s,0);
                     const rowBg = vi%2===0?"#fff":"#f9fdf9";
-                    return (
-                    <div key={v.variety} style={{display:"grid",gridTemplateColumns:col,borderBottom:"1px solid #e8f5e9",background:rowBg,alignItems:"center",gap:0}}>
+                    return (<React.Fragment key={v.variety}>
+                    <div style={{display:"grid",gridTemplateColumns:col,borderBottom:"1px solid #e8f5e9",background:rowBg,alignItems:"center",gap:0}}>
                       {/* Variety */}
                       <div style={{...td("#1a4a1a",true,"left"),flexDirection:"column",alignItems:"flex-start",gap:2}}>
                         <div>{v.variety}</div>
@@ -3711,7 +3904,69 @@ export default function App() {
                         {((inFarmer?v.totalQty:0)+(inSubOrg?v.soQty:0)).toLocaleString("en-IN")}
                       </div>
                     </div>
-                    );
+                    {/* Print report row — shown below each variety */}
+                    <div style={{background:rowBg,borderBottom:"2px solid #e8f5e9",padding:"2px 8px 6px 8px",textAlign:"right"}}>
+                      <button onClick={()=>{
+                        const variety = v.variety;
+                        const rate = v.globalRate||v.detectedRate||0;
+                        const farmerRows = (farmers||[]).flatMap(f =>
+                          (f.crops||[]).filter(c=>c.variety===variety).map(c=>({
+                            farmerNo: f.farmerNo||"", name: f.name||"", fatherName: f.fatherName||"",
+                            village: f.village||"", lotNo: c.lotNo||"", qty: parseFloat(c.quantity)||0,
+                            result: c.result, type: c.cropType||getVarietyType(variety)||"KMS",
+                            rate: c.rateOverride?parseFloat(c.ratePerUnit)||0:rate,
+                            value: c.result==="Pass"?(parseFloat(c.quantity)||0)*(c.rateOverride?parseFloat(c.ratePerUnit)||0:rate):0,
+                            source: "Farmer"
+                          }))
+                        );
+                        const soRows = (subOrgs||[]).flatMap(so =>
+                          (so.growers||[]).filter(g=>g.variety===variety).map(g=>({
+                            farmerNo: so.accNo||"", name: g.name||"", fatherName: g.fatherName||"",
+                            village: g.village||"", lotNo: g.lotNo||"", qty: parseFloat(g.packets)||0,
+                            result: g.result, type: getVarietyType(variety)||"KMS",
+                            rate: rate, value: g.result==="Pass"?(parseFloat(g.packets)||0)*rate:0,
+                            source: so.name||"Sub-Org"
+                          }))
+                        );
+                        const allRows = [...farmerRows, ...soRows];
+                        const totalQty = allRows.filter(r=>r.result==="Pass").reduce((s,r)=>s+r.qty,0);
+                        const totalVal = allRows.reduce((s,r)=>s+r.value,0);
+                        const fmt2 = n => `₹${Math.round(n).toLocaleString("en-IN")}`;
+                        const rows = allRows.map((r,i)=>`<tr style="background:${i%2===0?"#fff":"#f5f8ff"}">
+                          <td style="padding:5px 8px;border:1px solid #ddd;text-align:center;">${i+1}</td>
+                          <td style="padding:5px 8px;border:1px solid #ddd;text-align:center;">${r.farmerNo}</td>
+                          <td style="padding:5px 8px;border:1px solid #ddd;">${r.name}</td>
+                          <td style="padding:5px 8px;border:1px solid #ddd;">${r.fatherName||"—"}</td>
+                          <td style="padding:5px 8px;border:1px solid #ddd;">${r.village}</td>
+                          <td style="padding:5px 8px;border:1px solid #ddd;">${r.lotNo||"—"}</td>
+                          <td style="padding:5px 8px;border:1px solid #ddd;text-align:center;">${r.qty.toLocaleString("en-IN")}</td>
+                          <td style="padding:5px 8px;border:1px solid #ddd;text-align:center;font-weight:700;color:${r.result==="Pass"?"#1a5c1a":"#c0392b"}">${r.result==="Pass"?"✓ Pass":"✗ Fail"}</td>
+                          <td style="padding:5px 8px;border:1px solid #ddd;text-align:center;">${r.type}</td>
+                          <td style="padding:5px 8px;border:1px solid #ddd;text-align:right;">${r.rate>0?fmt2(r.rate):"—"}</td>
+                          <td style="padding:5px 8px;border:1px solid #ddd;text-align:right;font-weight:600;color:#1a5c1a;">${r.value>0?fmt2(r.value):"—"}</td>
+                          <td style="padding:5px 8px;border:1px solid #ddd;text-align:center;font-size:11px;color:#666;">${r.source}</td>
+                        </tr>`).join("");
+                        const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>${variety} — Farmer List</title>
+                          <style>body{font-family:Georgia,serif;padding:20px;color:#222;}h2{color:#1a4a1a;}table{border-collapse:collapse;width:100%;font-size:12px;}th{background:#1a4a1a;color:#fff;padding:7px 8px;border:1px solid #ddd;text-align:left;}.total-row td{font-weight:800;background:#e8f5e9;border-top:2px solid #1a4a1a;}@media print{@page{margin:8mm;size:A4 landscape;}}</style>
+                          </head><body>
+                          <h2>🌾 ${variety} — Farmer & Grower List</h2>
+                          <div style="font-size:13px;color:#555;margin-bottom:10px;">Bill Date: ${fmtDate(BILL_DATE)} | Rate: ${fmt2(rate)} | Total Farmers+Growers: ${allRows.length}</div>
+                          <table><thead><tr>
+                            <th>S.No</th><th>Acc/Farmer No</th><th>Name</th><th>Father</th><th>Village</th><th>LOT No</th><th>Qty</th><th>Result</th><th>Type</th><th>Rate</th><th>Value</th><th>Source</th>
+                          </tr></thead><tbody>${rows}
+                          <tr class="total-row">
+                            <td colspan="6" style="padding:7px 8px;border:1px solid #ddd;">TOTAL (Pass only)</td>
+                            <td style="padding:7px 8px;border:1px solid #ddd;text-align:center;">${totalQty.toLocaleString("en-IN")}</td>
+                            <td colspan="3" style="padding:7px 8px;border:1px solid #ddd;"></td>
+                            <td style="padding:7px 8px;border:1px solid #ddd;text-align:right;">${fmt2(totalVal)}</td>
+                            <td></td>
+                          </tr></tbody></table></body></html>`;
+                        const w=window.open("","_blank"); w.document.write(html); w.document.close(); setTimeout(()=>w.print(),400);
+                      }} style={{background:"#1a4a1a",color:"#fff",border:"none",borderRadius:4,padding:"4px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                        🖨️ Print Farmer List
+                      </button>
+                    </div>
+                    </React.Fragment>);
                   })}
                   {/* ── No Seed Farmers row ── */}
                   {(() => {
@@ -3884,6 +4139,15 @@ export default function App() {
             <div style={{marginBottom:20,background:"#fff8f0",borderRadius:8,padding:"16px",border:"1.5px solid #f0a040"}}>
               <div style={{fontWeight:700,fontSize:15,color:"#b35c00",marginBottom:4}}>🧪 Pesticide Price List</div>
               <div style={{fontSize:12,color:"#888",marginBottom:12}}>Add each pesticide with its sizes and prices. Each size is a separate entry.</div>
+              {/* Migration helper — fixes old format data */}
+              {pesticideList.some(p=>!p.sizes) && (
+                <button onClick={()=>{
+                  const migrated = pesticideList.map(p => p.sizes ? p : {name:p.name||"", sizes:[{size:"",price:parseFloat(p.price)||0}]});
+                  savePesticideList(migrated);
+                }} style={{background:"#e67e22",color:"#fff",border:"none",borderRadius:5,padding:"6px 14px",fontSize:12,fontWeight:700,cursor:"pointer",marginBottom:10,width:"100%"}}>
+                  🔧 Fix Old Pesticide Data (click once)
+                </button>
+              )}
               {pesticideList.map((p,i) => (
                 <div key={i} style={{marginBottom:12,background:"#fff",border:"1.5px solid #f0a040",borderRadius:8,padding:"10px 12px"}}>
                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
