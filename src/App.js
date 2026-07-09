@@ -1,3 +1,4 @@
+// App version: 2026-07-09-mobile-fix
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { saveToCloud, loadFromCloud, saveSnapshot, getSnapshots, restoreSnapshot } from "./firebase";
 import * as XLSX from "xlsx";
