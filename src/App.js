@@ -2307,53 +2307,39 @@ export default function App() {
           button { min-height: 38px !important; }
         }
       `}</style>
-      {/* Top Bar — compact on mobile */}
-      <div style={{ background:"linear-gradient(135deg,#1a4a1a,#2d6a2d)",color:"#fff",padding:"8px 12px" }}>
-        {/* Row 1: Title + Cloud + Menu toggle */}
-        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",gap:8 }}>
-          <div style={{ display:"flex",alignItems:"center",gap:10 }}>
-            <div>
-              <div style={{ fontSize:15,fontWeight:700,lineHeight:1.2 }}>🌾 Farmer Bill Generator</div>
-              <div style={{ fontSize:10,opacity:0.7 }}>రైతు పంట బిల్లు జనరేటర్</div>
-            </div>
-            <div style={{ fontSize:11,padding:"3px 10px",borderRadius:12,background:"rgba(255,255,255,0.15)",color:"#fff",textAlign:"center",whiteSpace:"nowrap" }}>
-              {saveStatus==="saving"&&"💾 Saving..."}
-              {saveStatus==="saved"&&"✅ Saved"}
-              {saveStatus==="error"&&"⚠️ Failed"}
-              {saveStatus==="idle"&&`🌾 ${farmers.length}`}
-            </div>
-            <div style={{fontSize:11,padding:"3px 8px",borderRadius:6,background:"rgba(0,0,0,0.3)",color:"#fff",whiteSpace:"nowrap"}}>
-              {cloudStatus==="saving"&&"⟳ Saving"}
-              {cloudStatus==="saved"&&<span style={{color:"#7dd87d"}}>☁️ ✓</span>}
-              {cloudStatus==="error"&&<span style={{color:"#e74c3c"}}>☁️ ✗</span>}
-              {cloudStatus==="idle"&&<span style={{color:"#aaa"}}>☁️</span>}
-            </div>
+      {/* Top Bar */}
+      <div style={{ background:"linear-gradient(135deg,#1a4a1a,#2d6a2d)",color:"#fff",padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8 }} className="mobile-toolbar">
+        <div style={{ display:"flex",alignItems:"center",gap:14 }}>
+          <div>
+            <div style={{ fontSize:18,fontWeight:700 }}>🌾 Farmer Bill Generator</div>
+            <div style={{ fontSize:11,opacity:0.8 }}>రైతు పంట బిల్లు జనరేటర్</div>
           </div>
-          <button onClick={()=>setShowMobileMenu(m=>!m)} style={{background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:6,color:"#fff",padding:"6px 10px",fontSize:16,cursor:"pointer",minWidth:40}}>
-            ☰
+          <div style={{ display:"flex",background:"rgba(0,0,0,0.25)",borderRadius:8,padding:3,gap:2,flexWrap:"wrap" }} className="mobile-nav">
+            {[["farmers","👨‍🌾 Farmers"],["suborgs","🏢 Sub-Orgs"],["careof","🤝 C/o Groups"],["dashboard","📊 Dashboard"],["variety","🌾 Variety Pay"]].map(([m,l]) => (
+              <button key={m} onClick={()=>{setMode(m);if(m==="variety")setVarietyPage(0);}} style={{ padding:"5px 12px",borderRadius:6,border:"none",cursor:"pointer",fontWeight:700,fontSize:12,background:mode===m?"#fff":"transparent",color:mode===m?"#1a4a1a":"#ccc" }}>{l}</button>
+            ))}
+          </div>
+        </div>
+        <div style={{ display:"flex",gap:6,alignItems:"center",flexWrap:"wrap" }} className="mobile-toolbar-btns">
+          <div style={{ fontSize:12,padding:"4px 12px",borderRadius:20,background:"rgba(255,255,255,0.15)",color:"#fff",minWidth:90,textAlign:"center" }}>
+            {saveStatus==="saving"&&"💾 Saving..."}
+            {saveStatus==="saved"&&"✅ Saved"}
+            {saveStatus==="error"&&"⚠️ Failed"}
+            {saveStatus==="idle"&&`🌾 ${farmers.length} farmers`}
+          </div>
+          <button onClick={mode==="suborgs" ? exportSubOrgData : exportAllData} style={btnStyle}>
+            📊 {mode==="suborgs" ? "Export Sub-Org" : "Export Excel"}
           </button>
-        </div>
-
-        {/* Row 2: Navigation tabs — always visible */}
-        <div style={{ display:"flex",gap:2,marginTop:6,overflowX:"auto",paddingBottom:2 }}>
-            {[["farmers","👨‍🌾"],["suborgs","🏢"],["careof","🤝"],["dashboard","📊"],["variety","🌾"]].map(([m,icon]) => (
-            <button key={m} onClick={()=>{setMode(m);if(m==="variety")setVarietyPage(0);setShowMobileMenu(false);}} style={{ padding:"5px 10px",borderRadius:6,border:"none",cursor:"pointer",fontWeight:700,fontSize:11,background:mode===m?"#fff":"rgba(0,0,0,0.2)",color:mode===m?"#1a4a1a":"#ccc",whiteSpace:"nowrap",flex:"0 0 auto" }}>
-              {icon} {m==="farmers"?"Farmers":m==="suborgs"?"Sub-Orgs":m==="careof"?"C/o":m==="dashboard"?"Dashboard":"Variety Pay"}
-            </button>
-          ))}
-        </div>
-
-        {/* Row 3: Action buttons — collapsible on mobile */}
-        {showMobileMenu && (
-          <div style={{ display:"flex",flexWrap:"wrap",gap:6,marginTop:8,paddingTop:8,borderTop:"1px solid rgba(255,255,255,0.2)" }}>
-            <button onClick={mode==="suborgs" ? exportSubOrgData : exportAllData} style={{...btnStyle,flex:"1 1 auto"}}>
-              📊 {mode==="suborgs" ? "Export Sub-Org" : "Export Excel"}
-            </button>
-            <button onClick={()=>setShowSettings(true)} style={{...btnStyle,flex:"1 1 auto",background:"rgba(80,80,80,0.6)"}}>⚙️ Settings</button>
-            <button onClick={mode==="suborgs"?downloadSubOrgTemplate:downloadTemplate} style={{...btnStyle,flex:"1 1 auto"}}>📥 Template</button>
-            <label style={{...btnStyle,display:"inline-block",flex:"1 1 auto",textAlign:"center",cursor:"pointer"}}>📤 Upload Excel<input type="file" accept=".xlsx,.xls,.csv" onChange={mode==="suborgs"?handleSubOrgExcelUpload:handleExcelUpload} style={{display:"none"}} /></label>
+          <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:6,background:"rgba(0,0,0,0.3)",fontSize:11,color:"#fff"}}>
+            {cloudStatus==="saving" && <><span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⟳</span> Saving...</>}
+            {cloudStatus==="saved" && <><span style={{color:"#7dd87d"}}>☁️ ✓</span> {cloudLastSaved}</>}
+            {cloudStatus==="error" && <><span style={{color:"#e74c3c"}}>☁️ ✗</span> Sync error</>}
+            {cloudStatus==="idle" && <><span style={{color:"#aaa"}}>☁️</span> Cloud ready</>}
           </div>
-        )}
+          <button onClick={()=>setShowSettings(true)} style={{...btnStyle, background:"rgba(80,80,80,0.6)"}}>⚙️ Settings</button>
+          <button onClick={mode==="suborgs"?downloadSubOrgTemplate:downloadTemplate} style={btnStyle}>📥 Template</button>
+          <label style={{...btnStyle,display:"inline-block"}}>📤 Upload Excel<input type="file" accept=".xlsx,.xls,.csv" onChange={mode==="suborgs"?handleSubOrgExcelUpload:handleExcelUpload} style={{display:"none"}} /></label>
+        </div>
       </div>
 
       {/* Save Failed Banner */}
@@ -2471,6 +2457,12 @@ export default function App() {
           {/* Farmers Panel */}
           {(() => {
             const searchLower = farmerSearch.toLowerCase().trim();
+            const sortByFarmerNo = (a, b) => {
+              const parse = no => { const m = String(no||"").match(/^(\d+)(.*)$/); return m ? [parseInt(m[1]), m[2].trim().toUpperCase()] : [9999, String(no||"")]; };
+              const [an, as] = parse(a.farmerNo);
+              const [bn, bs] = parse(b.farmerNo);
+              return an !== bn ? an - bn : as.localeCompare(bs);
+            };
             const vf = farmers.map((f,i)=>({...f,_idx:i}))
               .filter(f=>selectedVillage===null||(f.village?.trim()||"")===selectedVillage)
               .filter(f=>!searchLower||
@@ -2479,7 +2471,7 @@ export default function App() {
                 f.fatherName?.toLowerCase().includes(searchLower)||
                 f.village?.toLowerCase().includes(searchLower)||
                 (f.crops||[]).some(c=>c.variety?.toLowerCase().includes(searchLower))
-              );
+              ).sort(sortByFarmerNo);
             return (
               <div style={{ width:farmersPanelOpen?190:40,background:"#1a3a1a",color:"#fff",flexShrink:0,display:"flex",flexDirection:"column",borderRight:"1px solid #2d5a2d",transition:"width 0.2s ease",overflow:"hidden" }}>
                 <button onClick={()=>setFarmersPanelOpen(!farmersPanelOpen)} style={{ width:"100%",background:"#142e14",color:"#8bc88b",border:"none",borderBottom:"1px solid #2d5a2d",padding:"8px 0",cursor:"pointer",fontSize:15,textAlign:"center" }}>{farmersPanelOpen?"◀":"▶"}</button>
@@ -3845,7 +3837,8 @@ export default function App() {
                       </div>
                     </div>
                   )}
-                  {varStats.slice(varietyPage*VARIETY_PAGE_SIZE, (varietyPage+1)*VARIETY_PAGE_SIZE).map((v,vi)=>{\n                    const viGlobal = varietyPage*VARIETY_PAGE_SIZE + vi;
+                  {varStats.slice(varietyPage*VARIETY_PAGE_SIZE, (varietyPage+1)*VARIETY_PAGE_SIZE).map((v,vi)=>{
+                    const viGlobal = varietyPage*VARIETY_PAGE_SIZE + vi;
                     const inFarmer = (farmers||[]).some(f=>(f.crops||[]).some(c=>c.variety===v.variety));
                     const inSubOrg = (subOrgs||[]).some(so=>(so.growers||[]).some(g=>g.variety===v.variety));
                     const vsKey = "so_"+v.variety;
