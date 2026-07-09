@@ -1,4 +1,4 @@
-// App version: 2026-07-09-mobile-fix
+// App version: 2026-07-09-v2-cleanup
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { saveToCloud, loadFromCloud, saveSnapshot, getSnapshots, restoreSnapshot } from "./firebase";
 import * as XLSX from "xlsx";
@@ -4415,5 +4415,3 @@ function printBill(elementId, filename) {
   }, 300);
 }
 }
-
- 
