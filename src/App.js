@@ -1240,6 +1240,9 @@ export default function App() {
   const [mode, setMode] = useState("farmers");
   const [selectedVillage, setSelectedVillage] = useState(null);
   const [villageSearch, setVillageSearch] = useState("");
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [varietyPage, setVarietyPage] = useState(0);
+  const VARIETY_PAGE_SIZE = 10;
   const [selectedCareOf, setSelectedCareOf] = useState(null);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [tab, setTab] = useState("form");
@@ -2303,41 +2306,54 @@ export default function App() {
           button { min-height: 38px !important; }
         }
       `}</style>
-      {/* Top Bar */}
-      <div style={{ background:"linear-gradient(135deg,#1a4a1a,#2d6a2d)",color:"#fff",padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8 }} className="mobile-toolbar">
-        <div style={{ display:"flex",alignItems:"center",gap:14 }}>
-          <div>
-            <div style={{ fontSize:18,fontWeight:700 }}>🌾 Farmer Bill Generator</div>
-            <div style={{ fontSize:11,opacity:0.8 }}>రైతు పంట బిల్లు జనరేటర్</div>
+      {/* Top Bar — compact on mobile */}
+      <div style={{ background:"linear-gradient(135deg,#1a4a1a,#2d6a2d)",color:"#fff",padding:"8px 12px" }}>
+        {/* Row 1: Title + Cloud + Menu toggle */}
+        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",gap:8 }}>
+          <div style={{ display:"flex",alignItems:"center",gap:10 }}>
+            <div>
+              <div style={{ fontSize:15,fontWeight:700,lineHeight:1.2 }}>🌾 Farmer Bill Generator</div>
+              <div style={{ fontSize:10,opacity:0.7 }}>రైతు పంట బిల్లు జనరేటర్</div>
+            </div>
+            <div style={{ fontSize:11,padding:"3px 10px",borderRadius:12,background:"rgba(255,255,255,0.15)",color:"#fff",textAlign:"center",whiteSpace:"nowrap" }}>
+              {saveStatus==="saving"&&"💾 Saving..."}
+              {saveStatus==="saved"&&"✅ Saved"}
+              {saveStatus==="error"&&"⚠️ Failed"}
+              {saveStatus==="idle"&&`🌾 ${farmers.length}`}
+            </div>
+            <div style={{fontSize:11,padding:"3px 8px",borderRadius:6,background:"rgba(0,0,0,0.3)",color:"#fff",whiteSpace:"nowrap"}}>
+              {cloudStatus==="saving"&&"⟳ Saving"}
+              {cloudStatus==="saved"&&<span style={{color:"#7dd87d"}}>☁️ ✓</span>}
+              {cloudStatus==="error"&&<span style={{color:"#e74c3c"}}>☁️ ✗</span>}
+              {cloudStatus==="idle"&&<span style={{color:"#aaa"}}>☁️</span>}
+            </div>
           </div>
-          <div style={{ display:"flex",background:"rgba(0,0,0,0.25)",borderRadius:8,padding:3,gap:2,flexWrap:"wrap" }} className="mobile-nav">
-            {[["farmers","👨‍🌾 Farmers"],["suborgs","🏢 Sub-Orgs"],["careof","🤝 C/o Groups"],["dashboard","📊 Dashboard"],["variety","🌾 Variety Pay"]].map(([m,l]) => (
-              <button key={m} onClick={()=>setMode(m)} style={{ padding:"5px 12px",borderRadius:6,border:"none",cursor:"pointer",fontWeight:700,fontSize:12,background:mode===m?"#fff":"transparent",color:mode===m?"#1a4a1a":"#ccc" }}>{l}</button>
-            ))}
-          </div>
-        </div>
-        <div style={{ display:"flex",gap:6,alignItems:"center",flexWrap:"wrap" }} className="mobile-toolbar-btns">
-          <div style={{ fontSize:12,padding:"4px 12px",borderRadius:20,background:"rgba(255,255,255,0.15)",color:"#fff",minWidth:90,textAlign:"center" }}>
-            {saveStatus==="saving"&&"💾 Saving..."}
-            {saveStatus==="saved"&&"✅ Saved"}
-            {saveStatus==="error"&&"⚠️ Failed"}
-            {saveStatus==="idle"&&`🌾 ${farmers.length} farmers`}
-          </div>
-          <button onClick={mode==="suborgs" ? exportSubOrgData : exportAllData} style={btnStyle}>
-            📊 {mode==="suborgs" ? "Export Sub-Org" : "Export Excel"}
+          <button onClick={()=>setShowMobileMenu(m=>!m)} style={{background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:6,color:"#fff",padding:"6px 10px",fontSize:16,cursor:"pointer",minWidth:40}}>
+            ☰
           </button>
-          {/* Cloud sync status */}
-          <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:6,background:"rgba(0,0,0,0.3)",fontSize:11,color:"#fff"}}>
-            {cloudStatus==="saving" && <><span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⟳</span> Saving...</>}
-            {cloudStatus==="saved" && <><span style={{color:"#7dd87d"}}>☁️ ✓</span> {cloudLastSaved}</>}
-            {cloudStatus==="error" && <><span style={{color:"#e74c3c"}}>☁️ ✗</span> Sync error</>}
-            {cloudStatus==="idle" && <><span style={{color:"#aaa"}}>☁️</span> Cloud ready</>}
-          </div>
-          <button onClick={()=>setShowSettings(true)} style={{...btnStyle, background:"rgba(80,80,80,0.6)"}}>⚙️ Settings</button>
-          <button onClick={mode==="suborgs"?downloadSubOrgTemplate:downloadTemplate} style={btnStyle}>📥 Template</button>
-          <label style={{...btnStyle,display:"inline-block"}}>📤 Upload Excel<input type="file" accept=".xlsx,.xls,.csv" onChange={mode==="suborgs"?handleSubOrgExcelUpload:handleExcelUpload} style={{display:"none"}} /></label>
-          {mode==="farmers" && <label style={{...btnStyle,display:"inline-block",background:"rgba(230,126,34,0.7)"}}>🔄 Update C/o<input type="file" accept=".xlsx,.xls,.csv" onChange={handleCareOfUpdate} style={{display:"none"}} /></label>}
         </div>
+
+        {/* Row 2: Navigation tabs — always visible */}
+        <div style={{ display:"flex",gap:2,marginTop:6,overflowX:"auto",paddingBottom:2 }}>
+            {[["farmers","👨‍🌾"],["suborgs","🏢"],["careof","🤝"],["dashboard","📊"],["variety","🌾"]].map(([m,icon]) => (
+            <button key={m} onClick={()=>{setMode(m);if(m==="variety")setVarietyPage(0);setShowMobileMenu(false);}} style={{ padding:"5px 10px",borderRadius:6,border:"none",cursor:"pointer",fontWeight:700,fontSize:11,background:mode===m?"#fff":"rgba(0,0,0,0.2)",color:mode===m?"#1a4a1a":"#ccc",whiteSpace:"nowrap",flex:"0 0 auto" }}>
+              {icon} {m==="farmers"?"Farmers":m==="suborgs"?"Sub-Orgs":m==="careof"?"C/o":m==="dashboard"?"Dashboard":"Variety Pay"}
+            </button>
+          ))}
+        </div>
+
+        {/* Row 3: Action buttons — collapsible on mobile */}
+        {showMobileMenu && (
+          <div style={{ display:"flex",flexWrap:"wrap",gap:6,marginTop:8,paddingTop:8,borderTop:"1px solid rgba(255,255,255,0.2)" }}>
+            <button onClick={mode==="suborgs" ? exportSubOrgData : exportAllData} style={{...btnStyle,flex:"1 1 auto"}}>
+              📊 {mode==="suborgs" ? "Export Sub-Org" : "Export Excel"}
+            </button>
+            <button onClick={()=>setShowSettings(true)} style={{...btnStyle,flex:"1 1 auto",background:"rgba(80,80,80,0.6)"}}>⚙️ Settings</button>
+            <button onClick={mode==="suborgs"?downloadSubOrgTemplate:downloadTemplate} style={{...btnStyle,flex:"1 1 auto"}}>📥 Template</button>
+            <label style={{...btnStyle,display:"inline-block",flex:"1 1 auto",textAlign:"center",cursor:"pointer"}}>📤 Upload Excel<input type="file" accept=".xlsx,.xls,.csv" onChange={mode==="suborgs"?handleSubOrgExcelUpload:handleExcelUpload} style={{display:"none"}} /></label>
+            {mode==="farmers" && <label style={{...btnStyle,display:"inline-block",background:"rgba(230,126,34,0.7)",flex:"1 1 auto",textAlign:"center",cursor:"pointer"}}>🔄 Update C/o<input type="file" accept=".xlsx,.xls,.csv" onChange={handleCareOfUpdate} style={{display:"none"}} /></label>}
+          </div>
+        )}
       </div>
 
       {/* Save Failed Banner */}
@@ -3823,7 +3839,17 @@ export default function App() {
                   </div>
 
                   {/* Data rows */}
-                  {varStats.map((v,vi)=>{
+                  {/* Pagination for Variety Pay — prevents mobile freeze */}
+                  {varStats.length > VARIETY_PAGE_SIZE && (
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:"#f0f7f0",borderBottom:"1px solid #c8dfc8",gap:8,flexWrap:"wrap"}}>
+                      <span style={{fontSize:12,color:"#555"}}>Showing {varietyPage*VARIETY_PAGE_SIZE+1}–{Math.min((varietyPage+1)*VARIETY_PAGE_SIZE, varStats.length)} of {varStats.length} varieties</span>
+                      <div style={{display:"flex",gap:6}}>
+                        <button disabled={varietyPage===0} onClick={()=>setVarietyPage(p=>p-1)} style={{padding:"4px 12px",borderRadius:4,border:"1px solid #2d6a2d",background:varietyPage===0?"#eee":"#e8f5e9",color:varietyPage===0?"#999":"#2d6a2d",cursor:varietyPage===0?"default":"pointer",fontSize:12}}>← Prev</button>
+                        <button disabled={(varietyPage+1)*VARIETY_PAGE_SIZE>=varStats.length} onClick={()=>setVarietyPage(p=>p+1)} style={{padding:"4px 12px",borderRadius:4,border:"1px solid #2d6a2d",background:(varietyPage+1)*VARIETY_PAGE_SIZE>=varStats.length?"#eee":"#e8f5e9",color:(varietyPage+1)*VARIETY_PAGE_SIZE>=varStats.length?"#999":"#2d6a2d",cursor:(varietyPage+1)*VARIETY_PAGE_SIZE>=varStats.length?"default":"pointer",fontSize:12}}>Next →</button>
+                      </div>
+                    </div>
+                  )}
+                  {varStats.slice(varietyPage*VARIETY_PAGE_SIZE, (varietyPage+1)*VARIETY_PAGE_SIZE).map((v,vi)=>{\n                    const viGlobal = varietyPage*VARIETY_PAGE_SIZE + vi;
                     const inFarmer = (farmers||[]).some(f=>(f.crops||[]).some(c=>c.variety===v.variety));
                     const inSubOrg = (subOrgs||[]).some(so=>(so.growers||[]).some(g=>g.variety===v.variety));
                     const vsKey = "so_"+v.variety;
@@ -3835,7 +3861,7 @@ export default function App() {
                     const soGrowerCount = (subOrgs||[]).reduce((s,so)=>(so.growers||[]).filter(g=>g.variety===v.variety&&g.result==="Pass").length+s,0);
                     const soRate = parseFloat((varietySettings[v.variety]||{}).rate||0) || (() => { for(const so of (subOrgs||[])){const g=(so.growers||[]).find(g=>g.variety===v.variety&&g.result==="Pass");if(g)return parseFloat(g.rate)||0;} return 0; })();
                     const soCropVal = (subOrgs||[]).reduce((s,so)=>(so.growers||[]).filter(g=>g.variety===v.variety&&g.result==="Pass").reduce((ss,g)=>ss+(parseFloat(g.packets)||0)*soRate,0)+s,0);
-                    const rowBg = vi%2===0?"#fff":"#f9fdf9";
+                    const rowBg = viGlobal%2===0?"#fff":"#f9fdf9";
                     return (<React.Fragment key={v.variety}>
                     <div style={{display:"grid",gridTemplateColumns:col,borderBottom:"1px solid #e8f5e9",background:rowBg,alignItems:"center",gap:0}}>
                       {/* Variety */}
