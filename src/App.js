@@ -2352,7 +2352,6 @@ export default function App() {
             <button onClick={()=>setShowSettings(true)} style={{...btnStyle,flex:"1 1 auto",background:"rgba(80,80,80,0.6)"}}>⚙️ Settings</button>
             <button onClick={mode==="suborgs"?downloadSubOrgTemplate:downloadTemplate} style={{...btnStyle,flex:"1 1 auto"}}>📥 Template</button>
             <label style={{...btnStyle,display:"inline-block",flex:"1 1 auto",textAlign:"center",cursor:"pointer"}}>📤 Upload Excel<input type="file" accept=".xlsx,.xls,.csv" onChange={mode==="suborgs"?handleSubOrgExcelUpload:handleExcelUpload} style={{display:"none"}} /></label>
-            {mode==="farmers" && <label style={{...btnStyle,display:"inline-block",background:"rgba(230,126,34,0.7)",flex:"1 1 auto",textAlign:"center",cursor:"pointer"}}>🔄 Update C/o<input type="file" accept=".xlsx,.xls,.csv" onChange={handleCareOfUpdate} style={{display:"none"}} /></label>}
           </div>
         )}
       </div>
@@ -2781,10 +2780,6 @@ export default function App() {
                     📤 Upload Filled Template
                     <input type="file" accept=".xlsx,.xls" onChange={handleSubOrgTemplateUpload} style={{display:"none"}} />
                   </label>
-                <label style={{width:"100%",background:"rgba(122,184,232,0.2)",color:"#7ab8e8",border:"1px dashed #7ab8e8",borderRadius:4,padding:"6px",cursor:"pointer",fontSize:12,display:"block",textAlign:"center"}}>
-                  📤 Upload Old-Format Excel
-                  <input type="file" accept=".xlsx,.xls" onChange={handleSubOrgExcelUpload} style={{display:"none"}} />
-                </label>
                 </div>
               </>
             )}
