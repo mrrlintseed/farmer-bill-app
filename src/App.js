@@ -3829,11 +3829,17 @@ export default function App() {
                   {/* Data rows */}
                   {/* Pagination for Variety Pay — prevents mobile freeze */}
                   {varStats.length > VARIETY_PAGE_SIZE && (
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:"#f0f7f0",borderBottom:"1px solid #c8dfc8",gap:8,flexWrap:"wrap"}}>
-                      <span style={{fontSize:12,color:"#555"}}>Showing {varietyPage*VARIETY_PAGE_SIZE+1}–{Math.min((varietyPage+1)*VARIETY_PAGE_SIZE, varStats.length)} of {varStats.length} varieties</span>
-                      <div style={{display:"flex",gap:6}}>
-                        <button disabled={varietyPage===0} onClick={()=>setVarietyPage(p=>p-1)} style={{padding:"4px 12px",borderRadius:4,border:"1px solid #2d6a2d",background:varietyPage===0?"#eee":"#e8f5e9",color:varietyPage===0?"#999":"#2d6a2d",cursor:varietyPage===0?"default":"pointer",fontSize:12}}>← Prev</button>
-                        <button disabled={(varietyPage+1)*VARIETY_PAGE_SIZE>=varStats.length} onClick={()=>setVarietyPage(p=>p+1)} style={{padding:"4px 12px",borderRadius:4,border:"1px solid #2d6a2d",background:(varietyPage+1)*VARIETY_PAGE_SIZE>=varStats.length?"#eee":"#e8f5e9",color:(varietyPage+1)*VARIETY_PAGE_SIZE>=varStats.length?"#999":"#2d6a2d",cursor:(varietyPage+1)*VARIETY_PAGE_SIZE>=varStats.length?"default":"pointer",fontSize:12}}>Next →</button>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 16px",background:"#e8f5e9",borderBottom:"2px solid #2d6a2d",gap:8}}>
+                      <span style={{fontSize:13,color:"#1a4a1a",fontWeight:600}}>Page {varietyPage+1} of {Math.ceil(varStats.length/VARIETY_PAGE_SIZE)} &nbsp;·&nbsp; Showing {varietyPage*VARIETY_PAGE_SIZE+1}–{Math.min((varietyPage+1)*VARIETY_PAGE_SIZE, varStats.length)} of {varStats.length} varieties</span>
+                      <div style={{display:"flex",gap:8}}>
+                        <button disabled={varietyPage===0} onClick={()=>setVarietyPage(p=>p-1)}
+                          style={{padding:"6px 18px",borderRadius:6,border:"2px solid #2d6a2d",background:varietyPage===0?"#ccc":"#2d6a2d",color:"#fff",cursor:varietyPage===0?"default":"pointer",fontSize:13,fontWeight:700}}>
+                          Prev
+                        </button>
+                        <button disabled={(varietyPage+1)*VARIETY_PAGE_SIZE>=varStats.length} onClick={()=>setVarietyPage(p=>p+1)}
+                          style={{padding:"6px 18px",borderRadius:6,border:"2px solid #2d6a2d",background:(varietyPage+1)*VARIETY_PAGE_SIZE>=varStats.length?"#ccc":"#2d6a2d",color:"#fff",cursor:(varietyPage+1)*VARIETY_PAGE_SIZE>=varStats.length?"default":"pointer",fontSize:13,fontWeight:700}}>
+                          Next
+                        </button>
                       </div>
                     </div>
                   )}
