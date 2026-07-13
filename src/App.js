@@ -2552,7 +2552,31 @@ export default function App() {
             {tab==="form"&&currentFarmer&&<FarmerForm farmer={currentFarmer} index={selectedIdx} onChange={updated=>{const copy=[...farmers];copy[selectedIdx]=updated;updateFarmers(copy);}} onRemove={()=>deleteWithUndo("farmer", selectedIdx)} varietySettings={varietySettings} getVarietyRate={getVarietyRate} getVarietyType={getVarietyType} farmers={farmers} subOrgs={subOrgs} pesticideList={pesticideList} />}
             {tab==="preview"&&currentFarmer&&(
               <div>
-                <button onClick={()=>printBill('bill-single',`bill_${currentFarmer.farmerNo||currentFarmer.name||'farmer'}`)} style={{ marginBottom:12,background:"#2d6a2d",color:"#fff",border:"none",borderRadius:5,padding:"7px 18px",cursor:"pointer",fontSize:13 }}>🖨 Print / Save as PDF</button>
+                <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+                  <button onClick={()=>printBill('bill-single',`bill_${currentFarmer.farmerNo||currentFarmer.name||'farmer'}`)} style={{ background:"#2d6a2d",color:"#fff",border:"none",borderRadius:5,padding:"7px 18px",cursor:"pointer",fontSize:13 }}>🖨 Print / Save as PDF</button>
+                  <button onClick={async(e)=>{
+                    const btn=e.target; btn.disabled=true; btn.textContent="⏳ Translating...";
+                    try {
+                      const f = currentFarmer;
+                      const toTranslate = {name:f.name||"", fatherName:f.fatherName||"", village:f.village||"", careOf:f.careOf||""};
+                      const cropNames = [...new Set((f.crops||[]).map(c=>c.variety).filter(Boolean))];
+                      const resp = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:500,messages:[{role:"user",content:`Transliterate these names from English to Telugu script. Return ONLY valid JSON, nothing else.
+{"name":"${toTranslate.name}","fatherName":"${toTranslate.fatherName}","village":"${toTranslate.village}","careOf":"${toTranslate.careOf}"}`}]})});
+                      const data = await resp.json();
+                      const text = data.content?.map(c=>c.text||"").join("")||"{}";
+                      const t = JSON.parse(text.replace(/```json|```/g,"").trim());
+                      const telugu = {...f, name:t.name||f.name, fatherName:t.fatherName||f.fatherName, village:t.village||f.village, careOf:t.careOf||f.careOf};
+                      const origFarmer = {...currentFarmer};
+                      const idx = farmers.findIndex(x=>x.id===f.id);
+                      if(idx>=0){const copy=[...farmers];copy[idx]=telugu;setFarmers(copy);}
+                      setTimeout(()=>{
+                        printBill('bill-single',`bill_telugu_${f.farmerNo||f.name||'farmer'}`);
+                        setTimeout(()=>{if(idx>=0){const copy=[...farmers];copy[idx]=origFarmer;setFarmers(copy);}},1000);
+                      },200);
+                      btn.disabled=false; btn.textContent="🔤 Print in Telugu";
+                    } catch(err){alert("Translation failed: "+err.message);btn.disabled=false;btn.textContent="🔤 Print in Telugu";}
+                  }} style={{background:"#6a1a8a",color:"#fff",border:"none",borderRadius:5,padding:"7px 18px",cursor:"pointer",fontSize:13}}>🔤 Print in Telugu</button>
+                </div>
                 <div id="bill-single"><BillPreview farmer={currentFarmer} varietySettings={varietySettings} getVarietyBillDate={getVarietyBillDate} isVarietyPaid={isVarietyPaid} getVarietyRate={getVarietyRate} getVarietyType={getVarietyType} /></div>
               </div>
             )}
@@ -3123,7 +3147,36 @@ export default function App() {
                       </div>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                         <span style={{fontSize:12,color:"#555"}}>{growers.length} growers</span>
-                        <button onClick={()=>{const rows=growers.map((g,i)=>{const vpR=getSubOrgVarietyRate(g.variety)||parseFloat(g.rate)||0;const vpT=getSubOrgVarietyType(g.variety)||(g.type||"KMS");const ip=g.result==="Pass";const amt=ip?(parseFloat(g.packets)||0)*vpR:0;return `<tr style="background:${ip?i%2===0?"#fff":"#f5faff":"#fdecea"}"><td style="padding:5px 8px;border:1px solid #ddd;text-align:center;">${g.sNo||i+1}</td><td style="padding:5px 8px;border:1px solid #ddd;">${g.lotNo||""}</td><td style="padding:5px 8px;border:1px solid #ddd;font-weight:600;">${g.name||""}</td><td style="padding:5px 8px;border:1px solid #ddd;">${g.fatherName||""}</td><td style="padding:5px 8px;border:1px solid #ddd;">${g.village||""}</td><td style="padding:5px 8px;border:1px solid #ddd;">${g.variety||""}</td><td style="padding:5px 8px;border:1px solid #ddd;text-align:center;">${parseFloat(g.packets)||0}</td><td style="padding:5px 8px;border:1px solid #ddd;text-align:center;font-weight:700;color:${ip?"#155724":"#721c24"}">${ip?"✓P":"✗F"}</td><td style="padding:5px 8px;border:1px solid #ddd;text-align:center;">${vpT}</td><td style="padding:5px 8px;border:1px solid #ddd;text-align:right;">₹${vpR.toLocaleString("en-IN")}</td><td style="padding:5px 8px;border:1px solid #ddd;text-align:right;font-weight:600;color:#1a6a1a;">${ip?"₹"+amt.toLocaleString("en-IN"):"—"}</td><td style="padding:5px 8px;border:1px solid #ddd;font-size:11px;color:#856404;">${g.note||""}</td></tr>`;}).join("");const totalPkts=growers.reduce((s,g)=>s+(parseFloat(g.packets)||0),0);const totalAmt=growers.filter(g=>g.result==="Pass").reduce((s,g)=>s+(parseFloat(g.packets)||0)*(getSubOrgVarietyRate(g.variety)||parseFloat(g.rate)||0),0);const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Growers — ${so.name}</title><style>body{font-family:Georgia,serif;padding:20px;}h2{color:#1a2a4a;}table{border-collapse:collapse;width:100%;font-size:12px;}th{background:#1a2a4a;color:#fff;padding:6px 8px;border:1px solid #ddd;}.total-row td{font-weight:800;background:#e8f0ff;border-top:2px solid #1a2a4a;}@media print{@page{margin:8mm;size:A4 landscape;}}</style></head><body><h2>Growers — ${so.name} (#${so.accNo})</h2><div style="font-size:13px;color:#555;margin-bottom:8px;">Village: ${so.village||"—"} | Total: ${growers.length} growers</div><table><thead><tr><th>S.No</th><th>LOT No</th><th>Grower</th><th>Father</th><th>Village</th><th>Variety</th><th>Packets</th><th>Result</th><th>Type</th><th>Rate</th><th>Amount</th><th>Note</th></tr></thead><tbody>${rows}<tr class="total-row"><td colspan="6">TOTAL</td><td style="padding:6px 8px;border:1px solid #ddd;text-align:center;">${totalPkts.toLocaleString("en-IN")}</td><td colspan="3"></td><td style="padding:6px 8px;border:1px solid #ddd;text-align:right;">₹${Math.round(totalAmt).toLocaleString("en-IN")}</td><td></td></tr></tbody></table></body></html>`;const w=window.open("","_blank");w.document.write(html);w.document.close();setTimeout(()=>w.print(),400);}} style={{background:"#1a2a4a",color:"#fff",border:"none",borderRadius:5,padding:"5px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>🖨️ Print Growers</button>
+                        <div style={{display:"flex",gap:6}}>
+                          <button onClick={async()=>{
+                            if(!window.confirm(`Translate all ${growers.length} grower names to Telugu? This may take a few seconds.`)) return;
+                            const btn = event.target; btn.disabled=true; btn.textContent="⏳ Translating...";
+                            try {
+                              const names = growers.map((g,i)=>({i, name:g.name||"", fatherName:g.fatherName||"", village:g.village||""}));
+                              const prompt = `Transliterate these names from English to Telugu script. Return ONLY a JSON array, no other text.
+Each item: {"i": number, "name": "Telugu name", "fatherName": "Telugu father name", "village": "Telugu village name"}
+Names to transliterate:
+${JSON.stringify(names)}
+Rules: Transliterate phonetically to Telugu script. Keep empty strings as empty. Return valid JSON array only.`;
+                              const response = await fetch("https://api.anthropic.com/v1/messages", {
+                                method:"POST", headers:{"Content-Type":"application/json"},
+                                body: JSON.stringify({model:"claude-sonnet-4-6", max_tokens:4000, messages:[{role:"user",content:prompt}]})
+                              });
+                              const data = await response.json();
+                              const text = data.content?.map(c=>c.text||"").join("") || "";
+                              const clean = text.replace(/```json|```/g,"").trim();
+                              const translated = JSON.parse(clean);
+                              const newGrowers = [...growers];
+                              translated.forEach(t=>{ if(newGrowers[t.i]) { newGrowers[t.i]={...newGrowers[t.i], name:t.name||newGrowers[t.i].name, fatherName:t.fatherName||newGrowers[t.i].fatherName, village:t.village||newGrowers[t.i].village }; }});
+                              updateSO({...so, growers:newGrowers});
+                              btn.textContent="✅ Done!";
+                              setTimeout(()=>{btn.disabled=false;btn.textContent="🔤 Translate to Telugu";},2000);
+                            } catch(err) {
+                              alert("Translation failed: "+err.message);
+                              btn.disabled=false; btn.textContent="🔤 Translate to Telugu";
+                            }
+                          }} style={{background:"#6a1a8a",color:"#fff",border:"none",borderRadius:5,padding:"5px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>🔤 Translate to Telugu</button>((g,i)=>{const vpR=getSubOrgVarietyRate(g.variety)||parseFloat(g.rate)||0;const vpT=getSubOrgVarietyType(g.variety)||(g.type||"KMS");const ip=g.result==="Pass";const amt=ip?(parseFloat(g.packets)||0)*vpR:0;return `<tr style="background:${ip?i%2===0?"#fff":"#f5faff":"#fdecea"}"><td style="padding:5px 8px;border:1px solid #ddd;text-align:center;">${g.sNo||i+1}</td><td style="padding:5px 8px;border:1px solid #ddd;">${g.lotNo||""}</td><td style="padding:5px 8px;border:1px solid #ddd;font-weight:600;">${g.name||""}</td><td style="padding:5px 8px;border:1px solid #ddd;">${g.fatherName||""}</td><td style="padding:5px 8px;border:1px solid #ddd;">${g.village||""}</td><td style="padding:5px 8px;border:1px solid #ddd;">${g.variety||""}</td><td style="padding:5px 8px;border:1px solid #ddd;text-align:center;">${parseFloat(g.packets)||0}</td><td style="padding:5px 8px;border:1px solid #ddd;text-align:center;font-weight:700;color:${ip?"#155724":"#721c24"}">${ip?"✓P":"✗F"}</td><td style="padding:5px 8px;border:1px solid #ddd;text-align:center;">${vpT}</td><td style="padding:5px 8px;border:1px solid #ddd;text-align:right;">₹${vpR.toLocaleString("en-IN")}</td><td style="padding:5px 8px;border:1px solid #ddd;text-align:right;font-weight:600;color:#1a6a1a;">${ip?"₹"+amt.toLocaleString("en-IN"):"—"}</td><td style="padding:5px 8px;border:1px solid #ddd;font-size:11px;color:#856404;">${g.note||""}</td></tr>`;}).join("");const totalPkts=growers.reduce((s,g)=>s+(parseFloat(g.packets)||0),0);const totalAmt=growers.filter(g=>g.result==="Pass").reduce((s,g)=>s+(parseFloat(g.packets)||0)*(getSubOrgVarietyRate(g.variety)||parseFloat(g.rate)||0),0);const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Growers — ${so.name}</title><style>body{font-family:Georgia,serif;padding:20px;}h2{color:#1a2a4a;}table{border-collapse:collapse;width:100%;font-size:12px;}th{background:#1a2a4a;color:#fff;padding:6px 8px;border:1px solid #ddd;}.total-row td{font-weight:800;background:#e8f0ff;border-top:2px solid #1a2a4a;}@media print{@page{margin:8mm;size:A4 landscape;}}</style></head><body><h2>Growers — ${so.name} (#${so.accNo})</h2><div style="font-size:13px;color:#555;margin-bottom:8px;">Village: ${so.village||"—"} | Total: ${growers.length} growers</div><table><thead><tr><th>S.No</th><th>LOT No</th><th>Grower</th><th>Father</th><th>Village</th><th>Variety</th><th>Packets</th><th>Result</th><th>Type</th><th>Rate</th><th>Amount</th><th>Note</th></tr></thead><tbody>${rows}<tr class="total-row"><td colspan="6">TOTAL</td><td style="padding:6px 8px;border:1px solid #ddd;text-align:center;">${totalPkts.toLocaleString("en-IN")}</td><td colspan="3"></td><td style="padding:6px 8px;border:1px solid #ddd;text-align:right;">₹${Math.round(totalAmt).toLocaleString("en-IN")}</td><td></td></tr></tbody></table></body></html>`;const w=window.open("","_blank");w.document.write(html);w.document.close();setTimeout(()=>w.print(),400);}} style={{background:"#1a2a4a",color:"#fff",border:"none",borderRadius:5,padding:"5px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>🖨️ Print Growers</button>
+                        </div>
                       </div>
                       <div style={{ overflowX:"auto",borderRadius:8,border:"1px solid #b0c8e0" }}>
                         <table style={{ borderCollapse:"collapse",minWidth:900,width:"100%",fontSize:12 }}>
@@ -3320,6 +3373,30 @@ export default function App() {
                           }} style={{background:billMode==="final"?"#1a4a1a":"#2d5a8a",color:"#fff",border:"none",borderRadius:5,padding:"8px 20px",cursor:"pointer",fontSize:13,fontWeight:700}}>
                             🖨 Print {billMode==="partial"?"Partial":"Final"} Bill
                           </button>
+                          <button onClick={async(e)=>{
+                            const btn=e.target; btn.disabled=true; btn.textContent="⏳ Translating...";
+                            try {
+                              const growerNames = (so.growers||[]).map((g,i)=>({i,name:g.name||"",fatherName:g.fatherName||"",village:g.village||""}));
+                              const soNames = {name:so.name||"",fatherName:so.fatherName||"",village:so.village||""};
+                              const prompt = `Transliterate these names from English to Telugu script. Return ONLY valid JSON, nothing else.
+{"so":{"name":"${soNames.name}","fatherName":"${soNames.fatherName}","village":"${soNames.village}"},"growers":${JSON.stringify(growerNames)}}`;
+                              const resp = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:4000,messages:[{role:"user",content:prompt}]})});
+                              const data = await resp.json();
+                              const text = data.content?.map(c=>c.text||"").join("")||"{}";
+                              const t = JSON.parse(text.replace(/```json|```/g,"").trim());
+                              const origSO = {...so, growers:[...so.growers]};
+                              const teluguGrowers = (so.growers||[]).map((g,i)=>{const tg=t.growers?.find(x=>x.i===i);return tg?{...g,name:tg.name||g.name,fatherName:tg.fatherName||g.fatherName,village:tg.village||g.village}:g;});
+                              const teluguSO = {...so,name:t.so?.name||so.name,fatherName:t.so?.fatherName||so.fatherName,village:t.so?.village||so.village,growers:teluguGrowers};
+                              const idx = subOrgs.findIndex(x=>x.id===so.id);
+                              if(idx>=0){const copy=[...subOrgs];copy[idx]=teluguSO;setSubOrgs(copy);}
+                              setTimeout(()=>{
+                                recordBillingHistory(so.accNo||so.name, billMode==="partial"?selVars:["FINAL BILL"]);
+                                printBill('suborg-bill',`bill_telugu_${billMode==="partial"?"partial":"final"}_suborg_${so.accNo||so.name||'suborg'}`);
+                                setTimeout(()=>{if(idx>=0){const copy=[...subOrgs];copy[idx]=origSO;setSubOrgs(copy);}},1000);
+                              },200);
+                              btn.disabled=false; btn.textContent="🔤 Print in Telugu";
+                            } catch(err){alert("Translation failed: "+err.message);btn.disabled=false;btn.textContent="🔤 Print in Telugu";}
+                          }} style={{background:"#6a1a8a",color:"#fff",border:"none",borderRadius:5,padding:"8px 20px",cursor:"pointer",fontSize:13,fontWeight:700}}>🔤 Print in Telugu</button>
                         </div>
 
                         {/* ── Bill Preview ── */}
