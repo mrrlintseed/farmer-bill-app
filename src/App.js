@@ -3119,11 +3119,11 @@ export default function App() {
                     <div>
                       <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10 }}>
                         <div style={{ fontWeight:700,color:"#1a2a4a",fontSize:14 }}>Growers for {so.name||"Sub-Organizer"} ({growers.length})</div>
-                        <button onClick={()=>updateSO({...so,growers:[...growers,{sNo:growers.length+1,lotNo:"",name:"",fatherName:"",village:so.village||"",variety:"",area:"",packets:0,result:"Pass",type:"KMS",rate:550}]})} style={{background:"#2d5a8a",color:"#fff",border:"none",borderRadius:5,padding:"6px 14px",cursor:"pointer",fontSize:12}}>+ Add Grower</button>
-                      </div>
-                      <div style={{ overflowX:"auto" }}>
-                        <table style={{ width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:720 }}>
-                          <thead>
+                                  <td style={td2}>
+                                    <span style={{padding:"2px 8px",borderRadius:6,fontWeight:700,fontSize:10,background:vpType==="GMS"?"#856404":"#1a3a8a",color:"#fff"}}>{vpType}</span>
+                                    <span style={{fontSize:9,color:"#888",marginLeft:3}}>VP</span>
+                                  </td>
+                                  <td style={td2}>{ip?<span style={{fontSize:11,fontWeight:600,color:"#1a2a4a"}}>₹{vpRate.toLocaleString("en-IN")}<span style={{fontSize:9,color:"#888",marginLeft:2}}>VP</span></span>:<span style={{color:"#aaa"}}>—</span>}</td>
                             <tr style={{ background:"#2d5a8a",color:"#fff" }}>
                               {["S.No","LOT No","Grower","Father","Village","Variety","Packets","Result","Type","Rate(₹)","Amount(₹)","Note",""].map(h=><th key={h} style={th2}>{h}</th>)}
                             </tr>
@@ -3148,10 +3148,10 @@ export default function App() {
                                     <button onClick={()=>updGrower(i,"result","Fail")} style={{padding:"2px 7px",borderRadius:8,border:"none",fontWeight:700,fontSize:10,cursor:"pointer",marginLeft:2,background:!ip?"#721c24":"#fdecea",color:!ip?"#fff":"#721c24"}}>✗F</button>
                                   </td>
                                   <td style={td2}>
-                                    <button onClick={()=>{const gg=[...growers];gg[i]={...gg[i],type:"KMS",rate:550};updateSO({...so,growers:gg});}} style={{padding:"2px 6px",borderRadius:6,border:"none",fontWeight:700,fontSize:10,cursor:"pointer",background:(g.type||"KMS")==="KMS"?"#1a3a8a":"#e8f0ff",color:(g.type||"KMS")==="KMS"?"#fff":"#1a3a8a"}}>KMS</button>
-                                    <button onClick={()=>{const gg=[...growers];gg[i]={...gg[i],type:"GMS",rate:400};updateSO({...so,growers:gg});}} style={{padding:"2px 6px",borderRadius:6,border:"none",fontWeight:700,fontSize:10,cursor:"pointer",marginLeft:2,background:g.type==="GMS"?"#856404":"#fff3cd",color:g.type==="GMS"?"#fff":"#856404"}}>GMS</button>
+                                    <span style={{padding:"2px 8px",borderRadius:6,fontWeight:700,fontSize:10,background:vpType==="GMS"?"#856404":"#1a3a8a",color:"#fff"}}>{vpType}</span>
+                                    <span style={{fontSize:9,color:"#888",marginLeft:3}}>VP</span>
                                   </td>
-                                  <td style={td2}>{ip?<input type="number" value={g.rate||0} onChange={e=>updGrower(i,"rate",e.target.value)} style={{width:55,padding:"2px 4px",border:"1px solid #b0c8e0",borderRadius:3,fontSize:11,textAlign:"center"}} />:<span style={{color:"#aaa",fontStyle:"italic",fontSize:10}}>—</span>}</td>
+                                  <td style={td2}>{ip?<span style={{fontSize:11,fontWeight:600,color:"#1a2a4a"}}>₹{vpRate.toLocaleString("en-IN")}<span style={{fontSize:9,color:"#888",marginLeft:2}}>VP</span></span>:<span style={{color:"#aaa"}}>—</span>}</td>
                                   <td style={{...td2,fontWeight:600,color:ip?"#1a6a1a":"#aaa"}}>{ip?`₹${amt.toLocaleString("en-IN")}`:"—"}</td>
                                   <td style={td2}><input value={g.note||""} onChange={e=>updGrower(i,"note",e.target.value)} placeholder="optional" style={{width:90,padding:"2px 4px",border:"1px dashed #c8a000",borderRadius:3,fontSize:10,background:"#fffdf5",color:"#856404"}} /></td>
                                   <td style={td2}><button onClick={()=>updateSO({...so,growers:growers.filter((_,j)=>j!==i)})} style={{background:"#fdecea",color:"#e74c3c",border:"1px solid #e74c3c",borderRadius:3,padding:"2px 6px",cursor:"pointer",fontSize:10}}>✕</button></td>
