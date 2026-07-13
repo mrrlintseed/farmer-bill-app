@@ -2346,7 +2346,25 @@ export default function App() {
           <button onClick={()=>{mode==="suborgs"?exportSubOrgData():exportAllData();setShowMobileMenu(false);}} style={{...btnStyle}}>📊 {mode==="suborgs"?"Export Sub-Org":"Export Excel"}</button>
           <button onClick={()=>setShowSettings(true)} style={{...btnStyle,background:"rgba(80,80,80,0.6)"}}>⚙️ Settings</button>
           <button onClick={mode==="suborgs"?downloadSubOrgTemplate:downloadTemplate} style={btnStyle}>📥 Template</button>
-          <label style={{...btnStyle,display:"inline-block",cursor:"pointer"}}>📤 Upload Excel<input type="file" accept=".xlsx,.xls,.csv" onChange={e=>{mode==="suborgs"?handleSubOrgExcelUpload(e):handleExcelUpload(e);setShowMobileMenu(false);}} style={{display:"none"}} /></label>
+          <label style={{...btnStyle,display:"inline-block",cursor:"pointer"}}>📤 Upload<input type="file" accept=".xlsx,.xls,.csv" onChange={e=>{
+            if (mode==="suborgs") {
+              const file = e.target.files[0];
+              if (!file) return;
+              const reader = new FileReader();
+              reader.onload = (ev) => {
+                const wb = XLSX.read(ev.target.result, {type:"binary"});
+                if (wb.SheetNames.includes("Growers")) {
+                  handleSubOrgTemplateUpload(e);
+                } else {
+                  handleSubOrgExcelUpload(e);
+                }
+              };
+              reader.readAsBinaryString(file);
+            } else {
+              handleExcelUpload(e);
+            }
+            setShowMobileMenu(false);
+          }} style={{display:"none"}} /></label>
         </div>
       )}
 
@@ -2770,16 +2788,6 @@ export default function App() {
                   <button onClick={()=>setSubOrgTab("summary")} style={{width:"100%",background:subOrgTab==="summary"?"rgba(255,200,0,0.3)":"rgba(255,200,0,0.1)",color:"#ffd700",border:"1px dashed #ffd700",borderRadius:4,padding:"6px",cursor:"pointer",fontSize:12,display:"block",textAlign:"center",marginBottom:4}}>
                     📊 All Sub-Org Summary
                   </button>
-                  <button onClick={exportSubOrgData} style={{width:"100%",background:"rgba(45,90,138,0.4)",color:"#7ab8e8",border:"1px dashed #7ab8e8",borderRadius:4,padding:"6px",cursor:"pointer",fontSize:12,display:"block",textAlign:"center",marginBottom:4}}>
-                    📊 Export Sub-Org Excel
-                  </button>
-                  <button onClick={downloadSubOrgTemplate} style={{width:"100%",background:"rgba(45,106,45,0.4)",color:"#9ee8a0",border:"1px dashed #9ee8a0",borderRadius:4,padding:"6px",cursor:"pointer",fontSize:12,display:"block",textAlign:"center",marginBottom:4}}>
-                    📥 Download Blank Template
-                  </button>
-                  <label style={{width:"100%",background:"rgba(45,106,45,0.2)",color:"#9ee8a0",border:"1px dashed #9ee8a0",borderRadius:4,padding:"6px",cursor:"pointer",fontSize:12,display:"block",textAlign:"center",marginBottom:4}}>
-                    📤 Upload Filled Template
-                    <input type="file" accept=".xlsx,.xls" onChange={handleSubOrgTemplateUpload} style={{display:"none"}} />
-                  </label>
                 </div>
               </>
             )}
