@@ -2308,39 +2308,47 @@ export default function App() {
         }
       `}</style>
       {/* Top Bar */}
-      <div style={{ background:"linear-gradient(135deg,#1a4a1a,#2d6a2d)",color:"#fff",padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8 }} className="mobile-toolbar">
-        <div style={{ display:"flex",alignItems:"center",gap:14 }}>
-          <div>
-            <div style={{ fontSize:18,fontWeight:700 }}>🌾 Farmer Bill Generator</div>
-            <div style={{ fontSize:11,opacity:0.8 }}>రైతు పంట బిల్లు జనరేటర్</div>
+      <div style={{ background:"linear-gradient(135deg,#1a4a1a,#2d6a2d)",color:"#fff",padding:"6px 12px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8 }}>
+        {/* Left: Title + Nav tabs */}
+        <div style={{ display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0 }}>
+          <div style={{ flexShrink:0 }}>
+            <div style={{ fontSize:14,fontWeight:700,lineHeight:1.2 }}>🌾 Farmer Bill</div>
+            <div style={{ fontSize:9,opacity:0.7 }}>రైతు పంట బిల్లు జనరేటర్</div>
           </div>
-          <div style={{ display:"flex",background:"rgba(0,0,0,0.25)",borderRadius:8,padding:3,gap:2,flexWrap:"wrap" }} className="mobile-nav">
-            {[["farmers","👨‍🌾 Farmers"],["suborgs","🏢 Sub-Orgs"],["careof","🤝 C/o Groups"],["dashboard","📊 Dashboard"],["variety","🌾 Variety Pay"]].map(([m,l]) => (
-              <button key={m} onClick={()=>{setMode(m);if(m==="variety")setVarietyPage(0);}} style={{ padding:"5px 12px",borderRadius:6,border:"none",cursor:"pointer",fontWeight:700,fontSize:12,background:mode===m?"#fff":"transparent",color:mode===m?"#1a4a1a":"#ccc" }}>{l}</button>
+          <div style={{ display:"flex",background:"rgba(0,0,0,0.25)",borderRadius:6,padding:2,gap:1,flexWrap:"nowrap",overflowX:"auto" }}>
+            {[["farmers","👨‍🌾 Farmers"],["suborgs","🏢 Sub-Orgs"],["careof","🤝 C/o"],["dashboard","📊"],["variety","🌾 Variety"]].map(([m,l]) => (
+              <button key={m} onClick={()=>{setMode(m);if(m==="variety")setVarietyPage(0);}} style={{ padding:"4px 8px",borderRadius:4,border:"none",cursor:"pointer",fontWeight:700,fontSize:11,background:mode===m?"#fff":"transparent",color:mode===m?"#1a4a1a":"#ccc",whiteSpace:"nowrap",flexShrink:0 }}>{l}</button>
             ))}
           </div>
         </div>
-        <div style={{ display:"flex",gap:6,alignItems:"center",flexWrap:"wrap" }} className="mobile-toolbar-btns">
-          <div style={{ fontSize:12,padding:"4px 12px",borderRadius:20,background:"rgba(255,255,255,0.15)",color:"#fff",minWidth:90,textAlign:"center" }}>
-            {saveStatus==="saving"&&"💾 Saving..."}
-            {saveStatus==="saved"&&"✅ Saved"}
-            {saveStatus==="error"&&"⚠️ Failed"}
-            {saveStatus==="idle"&&`🌾 ${farmers.length} farmers`}
+        {/* Right: Status + Menu */}
+        <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0 }}>
+          <div style={{ fontSize:11,padding:"3px 8px",borderRadius:12,background:"rgba(255,255,255,0.15)",color:"#fff",whiteSpace:"nowrap" }}>
+            {saveStatus==="saving"&&"💾..."}
+            {saveStatus==="saved"&&"✅"}
+            {saveStatus==="error"&&"⚠️"}
+            {saveStatus==="idle"&&`🌾 ${farmers.length}`}
+            &nbsp;
+            {cloudStatus==="saving"&&"⟳"}
+            {cloudStatus==="saved"&&<span style={{color:"#7dd87d"}}>☁✓</span>}
+            {cloudStatus==="error"&&<span style={{color:"#e74c3c"}}>☁✗</span>}
+            {cloudStatus==="idle"&&<span style={{color:"#aaa"}}>☁</span>}
           </div>
-          <button onClick={mode==="suborgs" ? exportSubOrgData : exportAllData} style={btnStyle}>
-            📊 {mode==="suborgs" ? "Export Sub-Org" : "Export Excel"}
+          <button onClick={()=>setShowMobileMenu(m=>!m)}
+            style={{background:showMobileMenu?"rgba(255,255,255,0.3)":"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.4)",borderRadius:6,color:"#fff",padding:"5px 10px",fontSize:16,cursor:"pointer",fontWeight:700}}>
+            ⋮
           </button>
-          <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:6,background:"rgba(0,0,0,0.3)",fontSize:11,color:"#fff"}}>
-            {cloudStatus==="saving" && <><span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⟳</span> Saving...</>}
-            {cloudStatus==="saved" && <><span style={{color:"#7dd87d"}}>☁️ ✓</span> {cloudLastSaved}</>}
-            {cloudStatus==="error" && <><span style={{color:"#e74c3c"}}>☁️ ✗</span> Sync error</>}
-            {cloudStatus==="idle" && <><span style={{color:"#aaa"}}>☁️</span> Cloud ready</>}
-          </div>
-          <button onClick={()=>setShowSettings(true)} style={{...btnStyle, background:"rgba(80,80,80,0.6)"}}>⚙️ Settings</button>
-          <button onClick={mode==="suborgs"?downloadSubOrgTemplate:downloadTemplate} style={btnStyle}>📥 Template</button>
-          <label style={{...btnStyle,display:"inline-block"}}>📤 Upload Excel<input type="file" accept=".xlsx,.xls,.csv" onChange={mode==="suborgs"?handleSubOrgExcelUpload:handleExcelUpload} style={{display:"none"}} /></label>
         </div>
       </div>
+      {/* Dropdown menu */}
+      {showMobileMenu && (
+        <div style={{ background:"#1a4a1a",borderBottom:"2px solid #2d6a2d",padding:"8px 12px",display:"flex",flexWrap:"wrap",gap:6 }}>
+          <button onClick={()=>{mode==="suborgs"?exportSubOrgData():exportAllData();setShowMobileMenu(false);}} style={{...btnStyle}}>📊 {mode==="suborgs"?"Export Sub-Org":"Export Excel"}</button>
+          <button onClick={()=>setShowSettings(true)} style={{...btnStyle,background:"rgba(80,80,80,0.6)"}}>⚙️ Settings</button>
+          <button onClick={mode==="suborgs"?downloadSubOrgTemplate:downloadTemplate} style={btnStyle}>📥 Template</button>
+          <label style={{...btnStyle,display:"inline-block",cursor:"pointer"}}>📤 Upload Excel<input type="file" accept=".xlsx,.xls,.csv" onChange={e=>{mode==="suborgs"?handleSubOrgExcelUpload(e):handleExcelUpload(e);setShowMobileMenu(false);}} style={{display:"none"}} /></label>
+        </div>
+      )}
 
       {/* Save Failed Banner */}
       {saveStatus === "error" && (
