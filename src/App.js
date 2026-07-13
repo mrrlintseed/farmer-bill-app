@@ -3131,7 +3131,9 @@ export default function App() {
                           <tbody>
                             {growers.map((g,i)=>{
                               const ip=g.result==="Pass";
-                              const amt=ip?(parseFloat(g.packets)||0)*(parseFloat(g.rate)||0):0;
+                              const vpRate = getSubOrgVarietyRate(g.variety)||parseFloat(g.rate)||0;
+                              const vpType = getSubOrgVarietyType(g.variety)||(g.type||"KMS");
+                              const amt=ip?(parseFloat(g.packets)||0)*vpRate:0;
                               return (
                                 <tr key={i} style={{ background:!ip?"#fdecea":i%2===0?"#f5faff":"#fff",borderBottom:"1px solid #d0e4f4" }}>
                                   <td style={td2}><input value={g.sNo||""} onChange={e=>updGrower(i,"sNo",e.target.value)} style={{width:36,padding:"2px 4px",border:"1px solid #b0c8e0",borderRadius:3,fontSize:11,textAlign:"center"}} /></td>
@@ -3164,7 +3166,7 @@ export default function App() {
                                 <td style={td2}>{growers.reduce((s,g)=>s+(parseFloat(g.packets)||0),0)}</td>
                                 <td style={td2}><span style={{color:"#155724"}}>{growers.filter(g=>g.result==="Pass").length}P</span>/<span style={{color:"#721c24"}}>{growers.filter(g=>g.result!=="Pass").length}F</span></td>
                                 <td colSpan={2}></td>
-                                <td style={{...td2,color:"#1a6a1a"}}>₹{growers.filter(g=>g.result==="Pass").reduce((s,g)=>s+(parseFloat(g.packets)||0)*(parseFloat(g.rate)||0),0).toLocaleString("en-IN")}</td>
+                                <td style={{...td2,color:"#1a6a1a"}}>₹{growers.filter(g=>g.result==="Pass").reduce((s,g)=>s+(parseFloat(g.packets)||0)*(getSubOrgVarietyRate(g.variety)||parseFloat(g.rate)||0),0).toLocaleString("en-IN")}</td>
                                 <td></td>
                                 <td></td>
                               </tr>
