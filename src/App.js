@@ -3352,10 +3352,15 @@ export default function App() {
         const printCareOfSummary = (name, farmersList) => {
           const rows = farmersList.map(f => {
             const bal = getFarmerBalance(f);
+            const crops = (f.crops||[]).filter(c=>c.result==="Pass");
+            const varietyText = crops.map(c=>c.variety).filter(Boolean).join(", ") || "—";
+            const totalQty = crops.reduce((s,c)=>s+(parseFloat(c.quantity)||0),0);
             return `<tr>
               <td style="padding:6px 10px;border:1px solid #ccc;">${f.farmerNo||""}</td>
               <td style="padding:6px 10px;border:1px solid #ccc;">${f.name||""}</td>
               <td style="padding:6px 10px;border:1px solid #ccc;">${f.village||""}</td>
+              <td style="padding:6px 10px;border:1px solid #ccc;">${varietyText}</td>
+              <td style="padding:6px 10px;border:1px solid #ccc;text-align:center;">${totalQty>0?totalQty.toLocaleString("en-IN"):"—"}</td>
               <td style="padding:6px 10px;border:1px solid #ccc;text-align:right;font-weight:700;color:${bal>=0?'#1a7a1a':'#b30000'}">₹${Math.abs(Math.round(bal)).toLocaleString('en-IN')} ${bal>=0?'(Pay)':'(Due)'}</td>
             </tr>`;
           }).join("");
@@ -3367,15 +3372,15 @@ export default function App() {
               table{border-collapse:collapse;width:100%;margin-top:14px;}
               th{background:#1a4a1a;color:#fff;padding:8px 10px;text-align:left;border:1px solid #ccc;}
               .total-row td{font-weight:800;font-size:15px;border-top:2px solid #1a4a1a;background:#f0f7f0;}
-              @media print{@page{margin:10mm;size:A4 portrait;}}
+              @media print{@page{margin:10mm;size:A4 landscape;}}
             </style></head><body>
             <h2>C/o Settlement Summary</h2>
             <div style="font-size:15px;margin-bottom:4px;"><strong>C/o:</strong> ${name}</div>
             <div style="font-size:13px;color:#555;">Bill Date: ${fmtDate(BILL_DATE)} | Farmers: ${farmersList.length}</div>
             <table>
-              <thead><tr><th>Farmer No</th><th>Name</th><th>Village</th><th style="text-align:right;">Balance</th></tr></thead>
+              <thead><tr><th>Farmer No</th><th>Name</th><th>Village</th><th>Variety</th><th>Qty</th><th style="text-align:right;">Balance</th></tr></thead>
               <tbody>${rows}
-                <tr class="total-row"><td colspan="3">TOTAL</td><td style="text-align:right;padding:8px 10px;border:1px solid #ccc;">₹${Math.abs(Math.round(total)).toLocaleString('en-IN')} ${total>=0?'(Pay to C/o)':'(Due from C/o)'}</td></tr>
+                <tr class="total-row"><td colspan="5">TOTAL</td><td style="text-align:right;padding:8px 10px;border:1px solid #ccc;">₹${Math.abs(Math.round(total)).toLocaleString('en-IN')} ${total>=0?'(Pay to C/o)':'(Due from C/o)'}</td></tr>
               </tbody>
             </table>
             </body></html>`;
@@ -3440,16 +3445,24 @@ export default function App() {
                             <th style={{ padding:"8px 10px", textAlign:"left", borderBottom:"1px solid #c8dfc8" }}>Farmer No</th>
                             <th style={{ padding:"8px 10px", textAlign:"left", borderBottom:"1px solid #c8dfc8" }}>Name</th>
                             <th style={{ padding:"8px 10px", textAlign:"left", borderBottom:"1px solid #c8dfc8" }}>Village</th>
+                            <th style={{ padding:"8px 10px", textAlign:"left", borderBottom:"1px solid #c8dfc8" }}>Variety</th>
+                            <th style={{ padding:"8px 10px", textAlign:"center", borderBottom:"1px solid #c8dfc8" }}>Qty</th>
                             <th style={{ padding:"8px 10px", textAlign:"right", borderBottom:"1px solid #c8dfc8" }}>Balance</th>
                             <th style={{ padding:"8px 10px", textAlign:"center", borderBottom:"1px solid #c8dfc8" }}>Status</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {farmersWithBal.map(({f,balance}) => (
+                          {farmersWithBal.map(({f,balance}) => {
+                            const crops = (f.crops||[]).filter(c=>c.result==="Pass");
+                            const varietyText = crops.map(c=>c.variety).filter(Boolean).join(", ") || "—";
+                            const totalQty = crops.reduce((s,c)=>s+(parseFloat(c.quantity)||0),0);
+                            return (
                             <tr key={f.id} style={{ cursor:"pointer" }} onClick={()=>{ const idx=farmers.findIndex(x=>x.id===f.id); setSelectedIdx(idx); setMode("farmers"); setTab("preview"); }}>
                               <td style={{ padding:"8px 10px", borderBottom:"1px solid #eee" }}>{f.farmerNo||"—"}</td>
                               <td style={{ padding:"8px 10px", borderBottom:"1px solid #eee", fontWeight:600 }}>{f.name||"—"}</td>
                               <td style={{ padding:"8px 10px", borderBottom:"1px solid #eee" }}>{f.village||"—"}</td>
+                              <td style={{ padding:"8px 10px", borderBottom:"1px solid #eee", fontSize:12, color:"#555" }}>{varietyText}</td>
+                              <td style={{ padding:"8px 10px", borderBottom:"1px solid #eee", textAlign:"center", fontWeight:600 }}>{totalQty>0?totalQty.toLocaleString("en-IN"):"—"}</td>
                               <td style={{ padding:"8px 10px", borderBottom:"1px solid #eee", textAlign:"right", fontWeight:700, color:balance>=0?"#1a7a1a":"#b30000" }}>
                                 ₹{Math.abs(Math.round(balance)).toLocaleString('en-IN')} {balance>=0?"(Pay)":"(Due)"}
                               </td>
@@ -3457,7 +3470,7 @@ export default function App() {
                                 {f.billingDone ? <span style={{ color:"#1a7a1a" }}>✔ Billed</span> : <span style={{ color:"#b35c00" }}>⏳ Pending</span>}
                               </td>
                             </tr>
-                          ))}
+                          )})}
                         </tbody>
                       </table>
                     </div>
