@@ -3471,6 +3471,19 @@ export default function App() {
                               </td>
                             </tr>
                           )})}
+                          <tr style={{ background:"#f0f7f0", fontWeight:700, borderTop:"2px solid #c8dfc8" }}>
+                            <td colSpan={3} style={{ padding:"8px 10px", color:"#1a4a1a" }}>TOTAL ({farmersList.length} farmers)</td>
+                            <td style={{ padding:"8px 10px", fontSize:12, color:"#555" }}>—</td>
+                            <td style={{ padding:"8px 10px", textAlign:"center", color:"#1a4a1a" }}>
+                              {farmersWithBal.reduce((s,{f})=>(f.crops||[]).filter(c=>c.result==="Pass").reduce((ss,c)=>ss+(parseFloat(c.quantity)||0),s),0).toLocaleString("en-IN")}
+                            </td>
+                            <td style={{ padding:"8px 10px", textAlign:"right", color:total>=0?"#1a7a1a":"#b30000" }}>
+                              ₹{Math.abs(Math.round(total)).toLocaleString('en-IN')} {total>=0?"(Pay)":"(Due)"}
+                            </td>
+                            <td style={{ padding:"8px 10px", textAlign:"center", fontSize:12 }}>
+                              {farmersWithBal.filter(({f})=>f.billingDone).length}/{farmersList.length} Billed
+                            </td>
+                          </tr>
                         </tbody>
                       </table>
                     </div>
