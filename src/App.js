@@ -1355,6 +1355,21 @@ export default function App() {
       await saveToCloud(hasChanges ? updatedFarmers : (farmers||[]), subOrgs||[], {...currentVS, __pesticideList: list});
     }, 2000);
   };
+
+  // Translate text to Telugu using Google Translate (free, no API key)
+  const translateToTelugu = async (texts) => {
+    const results = [];
+    for (const text of texts) {
+      if (!text || !text.trim()) { results.push(text); continue; }
+      try {
+        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=te&dt=t&q=${encodeURIComponent(text)}`;
+        const r = await fetch(url);
+        const d = await r.json();
+        results.push(d[0]?.map(i=>i[0]).join('') || text);
+      } catch { results.push(text); }
+    }
+    return results;
+  };
   const [varietySettings, setVarietySettings] = useState(() => {
     try { const s = localStorage.getItem("variety_settings"); return s ? JSON.parse(s) : {}; } catch { return {}; }
   });
@@ -2559,19 +2574,19 @@ export default function App() {
                     try {
                       const f = currentFarmer;
                       const toTranslate = {name:f.name||"", fatherName:f.fatherName||"", village:f.village||"", careOf:f.careOf||""};
-                      const cropNames = [...new Set((f.crops||[]).map(c=>c.variety).filter(Boolean))];
-                      const resp = await fetch("/api/translate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:`Transliterate these names from English to Telugu script. Return ONLY valid JSON, nothing else.
-{"name":"${toTranslate.name}","fatherName":"${toTranslate.fatherName}","village":"${toTranslate.village}","careOf":"${toTranslate.careOf}"}`}]})});
-                      const data = await resp.json();
-                      const text = data.content?.map(c=>c.text||"").join("")||"{}";
-                      const t = JSON.parse(text.replace(/```json|```/g,"").trim());
-                      const telugu = {...f, name:t.name||f.name, fatherName:t.fatherName||f.fatherName, village:t.village||f.village, careOf:t.careOf||f.careOf};
+                      const f = currentFarmer;
+                      const texts = [f.name||"", f.fatherName||"", f.village||"", f.careOf||""];
+                      const translated = await translateToTelugu(texts);
+                      const [tName,tFather,tVillage,tCareOf] = translated;
+                      const telugu = {...f, name:tName||f.name, fatherName:tFather||f.fatherName, village:tVillage||f.village, careOf:tCareOf||f.careOf};
                       const origFarmer = {...currentFarmer};
                       const idx = farmers.findIndex(x=>x.id===f.id);
                       if(idx>=0){const copy=[...farmers];copy[idx]=telugu;setFarmers(copy);}
                       setTimeout(()=>{
                         printBill('bill-single',`bill_telugu_${f.farmerNo||f.name||'farmer'}`);
                         setTimeout(()=>{if(idx>=0){const copy=[...farmers];copy[idx]=origFarmer;setFarmers(copy);}},1000);
+                      },200);
+                      btn.disabled=false; btn.textContent="🔤 Print in Telugu";
                       },200);
                       btn.disabled=false; btn.textContent="🔤 Print in Telugu";
                     } catch(err){alert("Translation failed: "+err.message);btn.disabled=false;btn.textContent="🔤 Print in Telugu";}
@@ -3159,12 +3174,7 @@ Names to transliterate:
 ${JSON.stringify(names)}
 Rules: Transliterate phonetically to Telugu script. Keep empty strings as empty. Return valid JSON array only.`;
                               const allTexts = growers.flatMap(g=>[g.name||"",g.fatherName||"",g.village||""]);
-                              const response = await fetch("/api/translate", {
-                                method:"POST", headers:{"Content-Type":"application/json"},
-                                body: JSON.stringify({texts:allTexts})
-                              });
-                              const data = await response.json();
-                              const tr = data.translated||allTexts;
+                              const tr = await translateToTelugu(allTexts);
                               const newGrowers = growers.map((g,i)=>({...g,name:tr[i*3]||g.name,fatherName:tr[i*3+1]||g.fatherName,village:tr[i*3+2]||g.village}));
                               updateSO({...so, growers:newGrowers});
                               btn.textContent="✅ Done!";
@@ -3378,9 +3388,7 @@ Rules: Transliterate phonetically to Telugu script. Keep empty strings as empty.
                               const growerNames = (so.growers||[]).map((g,i)=>({i,name:g.name||"",fatherName:g.fatherName||"",village:g.village||""}));
                               const soNames = {name:so.name||"",fatherName:so.fatherName||"",village:so.village||""};
                               const allTexts = [soNames.name, soNames.fatherName, soNames.village, ...growerNames.flatMap(g=>[g.name,g.fatherName,g.village])];
-                              const resp = await fetch("/api/translate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({texts:allTexts})});
-                              const data = await resp.json();
-                              const tr = data.translated||allTexts;
+                              const tr = await translateToTelugu(allTexts);
                               const origSO = {...so, growers:[...so.growers]};
                               const teluguGrowers = (so.growers||[]).map((g,i)=>{const base=3+i*3;return {...g,name:tr[base]||g.name,fatherName:tr[base+1]||g.fatherName,village:tr[base+2]||g.village};});
                               const teluguSO = {...so,name:tr[0]||so.name,fatherName:tr[1]||so.fatherName,village:tr[2]||so.village,growers:teluguGrowers};
