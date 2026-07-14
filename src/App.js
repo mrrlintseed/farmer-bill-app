@@ -3190,21 +3190,7 @@ Rules: Transliterate phonetically to Telugu script. Keep empty strings as empty.
                               alert("Translation failed: "+err.message);
                               btn.disabled=false; btn.textContent="🔤 Translate to Telugu";
                             }
-                          }} style={{background:"#6a1a8a",color:"#fff",border:"none",borderRadius:5,padding:"5px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>🔤 Translate to Telugu</button>
-                          <button onClick={async(e)=>{
-                            const btn=e.target; btn.disabled=true; btn.textContent="⏳ Translating...";
-                            try {
-                              const allTexts = growers.flatMap(g=>[g.name||"",g.fatherName||"",g.village||""]);
-                              const tr = await translateToEnglish(allTexts);
-                              const newGrowers = growers.map((g,i)=>({...g,name:tr[i*3]||g.name,fatherName:tr[i*3+1]||g.fatherName,village:tr[i*3+2]||g.village}));
-                              updateSO({...so, growers:newGrowers});
-                              btn.textContent="✅ Done!";
-                              setTimeout(()=>{btn.disabled=false;btn.textContent="↩ Back to English";},2000);
-                            } catch(err){
-                              alert("Translation failed: "+err.message);
-                              btn.disabled=false; btn.textContent="↩ Back to English";
-                            }
-                          }} style={{background:"#2d5a8a",color:"#fff",border:"none",borderRadius:5,padding:"5px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>↩ Back to English</button>
+                          }} style={{background:"#6a1a8a",color:"#fff",border:"none",borderRadius:5,padding:"5px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>🔤 Print in Telugu</button>
                         <button onClick={()=>{const rows=growers.map((g,i)=>{const vpR=getSubOrgVarietyRate(g.variety)||parseFloat(g.rate)||0;const vpT=getSubOrgVarietyType(g.variety)||(g.type||"KMS");const ip=g.result==="Pass";const amt=ip?(parseFloat(g.packets)||0)*vpR:0;return `<tr style="background:${ip?i%2===0?"#fff":"#f5faff":"#fdecea"}"><td style="padding:5px 8px;border:1px solid #ddd;text-align:center;">${g.sNo||i+1}</td><td style="padding:5px 8px;border:1px solid #ddd;">${g.lotNo||""}</td><td style="padding:5px 8px;border:1px solid #ddd;font-weight:600;">${g.name||""}</td><td style="padding:5px 8px;border:1px solid #ddd;">${g.fatherName||""}</td><td style="padding:5px 8px;border:1px solid #ddd;">${g.village||""}</td><td style="padding:5px 8px;border:1px solid #ddd;">${g.variety||""}</td><td style="padding:5px 8px;border:1px solid #ddd;text-align:center;">${parseFloat(g.packets)||0}</td><td style="padding:5px 8px;border:1px solid #ddd;text-align:center;font-weight:700;color:${ip?"#155724":"#721c24"}">${ip?"✓P":"✗F"}</td><td style="padding:5px 8px;border:1px solid #ddd;text-align:center;">${vpT}</td><td style="padding:5px 8px;border:1px solid #ddd;text-align:right;">₹${vpR.toLocaleString("en-IN")}</td><td style="padding:5px 8px;border:1px solid #ddd;text-align:right;font-weight:600;color:#1a6a1a;">${ip?"₹"+amt.toLocaleString("en-IN"):"—"}</td><td style="padding:5px 8px;border:1px solid #ddd;font-size:11px;color:#856404;">${g.note||""}</td></tr>`;}).join("");const totalPkts=growers.reduce((s,g)=>s+(parseFloat(g.packets)||0),0);const totalAmt=growers.filter(g=>g.result==="Pass").reduce((s,g)=>s+(parseFloat(g.packets)||0)*(getSubOrgVarietyRate(g.variety)||parseFloat(g.rate)||0),0);const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Growers — ${so.name}</title><style>body{font-family:Georgia,serif;padding:20px;}h2{color:#1a2a4a;}table{border-collapse:collapse;width:100%;font-size:12px;}th{background:#1a2a4a;color:#fff;padding:6px 8px;border:1px solid #ddd;}.total-row td{font-weight:800;background:#e8f0ff;border-top:2px solid #1a2a4a;}@media print{@page{margin:8mm;size:A4 landscape;}}</style></head><body><h2>Growers — ${so.name} (#${so.accNo})</h2><div style="font-size:13px;color:#555;margin-bottom:8px;">Village: ${so.village||"—"} | Total: ${growers.length} growers</div><table><thead><tr><th>S.No</th><th>LOT No</th><th>Grower</th><th>Father</th><th>Village</th><th>Variety</th><th>Packets</th><th>Result</th><th>Type</th><th>Rate</th><th>Amount</th><th>Note</th></tr></thead><tbody>${rows}<tr class="total-row"><td colspan="6">TOTAL</td><td style="padding:6px 8px;border:1px solid #ddd;text-align:center;">${totalPkts.toLocaleString("en-IN")}</td><td colspan="3"></td><td style="padding:6px 8px;border:1px solid #ddd;text-align:right;">₹${Math.round(totalAmt).toLocaleString("en-IN")}</td><td></td></tr></tbody></table></body></html>`;const w=window.open("","_blank");w.document.write(html);w.document.close();setTimeout(()=>w.print(),400);}} style={{background:"#1a2a4a",color:"#fff",border:"none",borderRadius:5,padding:"5px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>🖨️ Print Growers</button>
                         </div>
                       </div>
@@ -4087,7 +4073,7 @@ Rules: Transliterate phonetically to Telugu script. Keep empty strings as empty.
                         );
                         const allRows = [...farmerRows, ...soRows];
                         const totalQty = allRows.filter(r=>r.result==="Pass").reduce((s,r)=>s+r.qty,0);
-                        const totalVal = allRows.reduce((s,r)=>s+r.value,0);
+                        const totalVal = allRows.filter(r=>r.result==="Pass").reduce((s,r)=>s+r.value,0);
                         const fmt2 = n => `₹${Math.round(n).toLocaleString("en-IN")}`;
                         const rows = allRows.map((r,i)=>`<tr style="background:${i%2===0?"#fff":"#f5f8ff"}">
                           <td style="padding:5px 8px;border:1px solid #ddd;text-align:center;">${i+1}</td>
@@ -4096,7 +4082,7 @@ Rules: Transliterate phonetically to Telugu script. Keep empty strings as empty.
                           <td style="padding:5px 8px;border:1px solid #ddd;">${r.fatherName||"—"}</td>
                           <td style="padding:5px 8px;border:1px solid #ddd;">${r.village}</td>
                           <td style="padding:5px 8px;border:1px solid #ddd;">${r.lotNo||"—"}</td>
-                          <td style="padding:5px 8px;border:1px solid #ddd;text-align:center;">${r.qty.toLocaleString("en-IN")}</td>
+                          <td style="padding:5px 8px;border:1px solid #ddd;text-align:center;">${r.result==="Pass"?r.qty.toLocaleString("en-IN"):"—"}</td>
                           <td style="padding:5px 8px;border:1px solid #ddd;text-align:center;font-weight:700;color:${r.result==="Pass"?"#1a5c1a":"#c0392b"}">${r.result==="Pass"?"✓ Pass":"✗ Fail"}</td>
                           <td style="padding:5px 8px;border:1px solid #ddd;text-align:center;">${r.type}</td>
                           <td style="padding:5px 8px;border:1px solid #ddd;text-align:right;">${r.rate>0?fmt2(r.rate):"—"}</td>
