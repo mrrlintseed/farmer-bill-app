@@ -2560,7 +2560,7 @@ export default function App() {
                       const f = currentFarmer;
                       const toTranslate = {name:f.name||"", fatherName:f.fatherName||"", village:f.village||"", careOf:f.careOf||""};
                       const cropNames = [...new Set((f.crops||[]).map(c=>c.variety).filter(Boolean))];
-                      const resp = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:500,messages:[{role:"user",content:`Transliterate these names from English to Telugu script. Return ONLY valid JSON, nothing else.
+                      const resp = await fetch("/api/translate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:`Transliterate these names from English to Telugu script. Return ONLY valid JSON, nothing else.
 {"name":"${toTranslate.name}","fatherName":"${toTranslate.fatherName}","village":"${toTranslate.village}","careOf":"${toTranslate.careOf}"}`}]})});
                       const data = await resp.json();
                       const text = data.content?.map(c=>c.text||"").join("")||"{}";
@@ -3158,9 +3158,9 @@ Each item: {"i": number, "name": "Telugu name", "fatherName": "Telugu father nam
 Names to transliterate:
 ${JSON.stringify(names)}
 Rules: Transliterate phonetically to Telugu script. Keep empty strings as empty. Return valid JSON array only.`;
-                              const response = await fetch("https://api.anthropic.com/v1/messages", {
+                              const response = await fetch("/api/translate", {
                                 method:"POST", headers:{"Content-Type":"application/json"},
-                                body: JSON.stringify({model:"claude-sonnet-4-6", max_tokens:4000, messages:[{role:"user",content:prompt}]})
+                                body: JSON.stringify({prompt})
                               });
                               const data = await response.json();
                               const text = data.content?.map(c=>c.text||"").join("") || "";
@@ -3381,7 +3381,7 @@ Rules: Transliterate phonetically to Telugu script. Keep empty strings as empty.
                               const soNames = {name:so.name||"",fatherName:so.fatherName||"",village:so.village||""};
                               const prompt = `Transliterate these names from English to Telugu script. Return ONLY valid JSON, nothing else.
 {"so":{"name":"${soNames.name}","fatherName":"${soNames.fatherName}","village":"${soNames.village}"},"growers":${JSON.stringify(growerNames)}}`;
-                              const resp = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:4000,messages:[{role:"user",content:prompt}]})});
+                              const resp = await fetch("/api/translate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt})});
                               const data = await resp.json();
                               const text = data.content?.map(c=>c.text||"").join("")||"{}";
                               const t = JSON.parse(text.replace(/```json|```/g,"").trim());
