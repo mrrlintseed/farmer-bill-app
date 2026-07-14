@@ -3158,16 +3158,14 @@ Each item: {"i": number, "name": "Telugu name", "fatherName": "Telugu father nam
 Names to transliterate:
 ${JSON.stringify(names)}
 Rules: Transliterate phonetically to Telugu script. Keep empty strings as empty. Return valid JSON array only.`;
+                              const allTexts = growers.flatMap(g=>[g.name||"",g.fatherName||"",g.village||""]);
                               const response = await fetch("/api/translate", {
                                 method:"POST", headers:{"Content-Type":"application/json"},
-                                body: JSON.stringify({prompt})
+                                body: JSON.stringify({texts:allTexts})
                               });
                               const data = await response.json();
-                              const text = data.content?.map(c=>c.text||"").join("") || "";
-                              const clean = text.replace(/```json|```/g,"").trim();
-                              const translated = JSON.parse(clean);
-                              const newGrowers = [...growers];
-                              translated.forEach(t=>{ if(newGrowers[t.i]) { newGrowers[t.i]={...newGrowers[t.i], name:t.name||newGrowers[t.i].name, fatherName:t.fatherName||newGrowers[t.i].fatherName, village:t.village||newGrowers[t.i].village }; }});
+                              const tr = data.translated||allTexts;
+                              const newGrowers = growers.map((g,i)=>({...g,name:tr[i*3]||g.name,fatherName:tr[i*3+1]||g.fatherName,village:tr[i*3+2]||g.village}));
                               updateSO({...so, growers:newGrowers});
                               btn.textContent="✅ Done!";
                               setTimeout(()=>{btn.disabled=false;btn.textContent="🔤 Translate to Telugu";},2000);
@@ -3379,15 +3377,13 @@ Rules: Transliterate phonetically to Telugu script. Keep empty strings as empty.
                             try {
                               const growerNames = (so.growers||[]).map((g,i)=>({i,name:g.name||"",fatherName:g.fatherName||"",village:g.village||""}));
                               const soNames = {name:so.name||"",fatherName:so.fatherName||"",village:so.village||""};
-                              const prompt = `Transliterate these names from English to Telugu script. Return ONLY valid JSON, nothing else.
-{"so":{"name":"${soNames.name}","fatherName":"${soNames.fatherName}","village":"${soNames.village}"},"growers":${JSON.stringify(growerNames)}}`;
-                              const resp = await fetch("/api/translate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt})});
+                              const allTexts = [soNames.name, soNames.fatherName, soNames.village, ...growerNames.flatMap(g=>[g.name,g.fatherName,g.village])];
+                              const resp = await fetch("/api/translate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({texts:allTexts})});
                               const data = await resp.json();
-                              const text = data.content?.map(c=>c.text||"").join("")||"{}";
-                              const t = JSON.parse(text.replace(/```json|```/g,"").trim());
+                              const tr = data.translated||allTexts;
                               const origSO = {...so, growers:[...so.growers]};
-                              const teluguGrowers = (so.growers||[]).map((g,i)=>{const tg=t.growers?.find(x=>x.i===i);return tg?{...g,name:tg.name||g.name,fatherName:tg.fatherName||g.fatherName,village:tg.village||g.village}:g;});
-                              const teluguSO = {...so,name:t.so?.name||so.name,fatherName:t.so?.fatherName||so.fatherName,village:t.so?.village||so.village,growers:teluguGrowers};
+                              const teluguGrowers = (so.growers||[]).map((g,i)=>{const base=3+i*3;return {...g,name:tr[base]||g.name,fatherName:tr[base+1]||g.fatherName,village:tr[base+2]||g.village};});
+                              const teluguSO = {...so,name:tr[0]||so.name,fatherName:tr[1]||so.fatherName,village:tr[2]||so.village,growers:teluguGrowers};
                               const idx = subOrgs.findIndex(x=>x.id===so.id);
                               if(idx>=0){const copy=[...subOrgs];copy[idx]=teluguSO;setSubOrgs(copy);}
                               setTimeout(()=>{
