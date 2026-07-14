@@ -2571,8 +2571,6 @@ export default function App() {
                     const btn=e.target; btn.disabled=true; btn.textContent="⏳ Translating...";
                     try {
                       const f = currentFarmer;
-                      const toTranslate = {name:f.name||"", fatherName:f.fatherName||"", village:f.village||"", careOf:f.careOf||""};
-                      const f = currentFarmer;
                       const texts = [f.name||"", f.fatherName||"", f.village||"", f.careOf||""];
                       const translated = await translateToTelugu(texts);
                       const [tName,tFather,tVillage,tCareOf] = translated;
