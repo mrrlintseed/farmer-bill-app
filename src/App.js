@@ -1356,20 +1356,17 @@ export default function App() {
     }, 2000);
   };
 
-  // Translate text to Telugu using MyMemory free translation API
+  // Translate text to Telugu via Vercel API proxy
   const translateToTelugu = async (texts) => {
-    const results = [];
-    for (const text of texts) {
-      if (!text || !text.trim()) { results.push(text); continue; }
-      try {
-        const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|te`;
-        const r = await fetch(url);
-        const d = await r.json();
-        const translated = d?.responseData?.translatedText;
-        results.push(translated && translated !== text ? translated : text);
-      } catch { results.push(text); }
-    }
-    return results;
+    try {
+      const resp = await fetch("/api/translate", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({texts})
+      });
+      const data = await resp.json();
+      return data.translated || texts;
+    } catch { return texts; }
   };
   const [varietySettings, setVarietySettings] = useState(() => {
     try { const s = localStorage.getItem("variety_settings"); return s ? JSON.parse(s) : {}; } catch { return {}; }
