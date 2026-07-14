@@ -1356,17 +1356,22 @@ export default function App() {
     }, 2000);
   };
 
-  // Translate text to Telugu via Vercel API proxy
+  // Translate text to Telugu using LibreTranslate public API
   const translateToTelugu = async (texts) => {
-    try {
-      const resp = await fetch("/api/translate", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({texts})
-      });
-      const data = await resp.json();
-      return data.translated || texts;
-    } catch { return texts; }
+    const results = [];
+    for (const text of texts) {
+      if (!text || !text.trim()) { results.push(text); continue; }
+      try {
+        const resp = await fetch("https://translate-serverless.vercel.app/api/translate", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({message: text, from: "en", to: "te"})
+        });
+        const d = await resp.json();
+        results.push(d?.trans_result?.dst || text);
+      } catch { results.push(text); }
+    }
+    return results;
   };
   const [varietySettings, setVarietySettings] = useState(() => {
     try { const s = localStorage.getItem("variety_settings"); return s ? JSON.parse(s) : {}; } catch { return {}; }
