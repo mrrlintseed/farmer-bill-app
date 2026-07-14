@@ -2583,8 +2583,6 @@ export default function App() {
                         setTimeout(()=>{if(idx>=0){const copy=[...farmers];copy[idx]=origFarmer;setFarmers(copy);}},1000);
                       },200);
                       btn.disabled=false; btn.textContent="🔤 Print in Telugu";
-                      },200);
-                      btn.disabled=false; btn.textContent="🔤 Print in Telugu";
                     } catch(err){alert("Translation failed: "+err.message);btn.disabled=false;btn.textContent="🔤 Print in Telugu";}
                   }} style={{background:"#6a1a8a",color:"#fff",border:"none",borderRadius:5,padding:"7px 18px",cursor:"pointer",fontSize:13}}>🔤 Print in Telugu</button>
                 </div>
