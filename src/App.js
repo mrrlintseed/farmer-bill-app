@@ -1356,16 +1356,17 @@ export default function App() {
     }, 2000);
   };
 
-  // Translate text to Telugu using Google Translate (free, no API key)
+  // Translate text to Telugu using MyMemory free translation API
   const translateToTelugu = async (texts) => {
     const results = [];
     for (const text of texts) {
       if (!text || !text.trim()) { results.push(text); continue; }
       try {
-        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=te&dt=t&q=${encodeURIComponent(text)}`;
+        const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|te`;
         const r = await fetch(url);
         const d = await r.json();
-        results.push(d[0]?.map(i=>i[0]).join('') || text);
+        const translated = d?.responseData?.translatedText;
+        results.push(translated && translated !== text ? translated : text);
       } catch { results.push(text); }
     }
     return results;
