@@ -5,11 +5,11 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
-    const { texts } = req.body;
+    const { texts, from = 'en', to = 'te' } = req.body;
     const translated = [];
     for (const text of (texts||[])) {
       if (!text?.trim()) { translated.push(text); continue; }
-      const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=te&dt=t&q=${encodeURIComponent(text)}`;
+      const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${from}&tl=${to}&dt=t&q=${encodeURIComponent(text)}`;
       const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
       const d = await r.json();
       translated.push(d[0]?.map(i=>i[0]).join('') || text);
