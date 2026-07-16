@@ -1,3 +1,4 @@
+// FIXED BUILD: Growers-tab Telugu print only + Babel syntax repair — 2026-07-16
 // App version: 2026-07-14-telugu-print-only
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { saveToCloud, loadFromCloud, saveSnapshot, getSnapshots, restoreSnapshot } from "./firebase";
@@ -3170,61 +3171,104 @@ export default function App() {
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                         <span style={{fontSize:12,color:"#555"}}>{growers.length} growers</span>
                         <div style={{display:"flex",gap:6}}>
-                          <button onClick={async()=>{
-                            if(!window.confirm("Translate all "+growers.length+" grower names to Telugu? This may take a few seconds.")) return;
-                            const btn = event.target; btn.disabled=true; btn.textContent="⏳ Translating...";
-                            try {
-                              const names = growers.map((g,i)=>({i, name:g.name||"", fatherName:g.fatherName||"", village:g.village||""}));
-                              const prompt = `Transliterate these names from English to Telugu script. Return ONLY a JSON array, no other text.
                         <button onClick={async(e)=>{
-                            const btn=e.target; btn.disabled=true; btn.textContent="⏳ Translating...";
+                            // Open the print window immediately so the browser does not block it
+                            // after the asynchronous Telugu transliteration finishes.
+                            const btn = e.currentTarget;
+                            const printWindow = window.open("", "_blank");
+                            if (!printWindow) {
+                              alert("Please allow pop-ups for this site, then click Print in Telugu again.");
+                              return;
+                            }
+
+                            printWindow.document.open();
+                            printWindow.document.write(
+                              '<!DOCTYPE html><html><head><meta charset="UTF-8"/>'+
+                              '<title>Preparing Telugu Growers Print</title>'+
+                              '<style>body{font-family:Arial,sans-serif;padding:40px;text-align:center;color:#1a2a4a}</style>'+
+                              '</head><body><h3>Preparing Telugu print...</h3><p>Please wait.</p></body></html>'
+                            );
+                            printWindow.document.close();
+
+                            btn.disabled = true;
+                            btn.textContent = "⏳ Preparing Telugu Print...";
+
                             try {
-                              const names = growers.map(g=>g.name||"");
-                              const fathers = growers.map(g=>g.fatherName||"");
-                              const villages = growers.map(g=>g.village||"");
+                              // Translate only a temporary copy used for printing.
+                              // The growers shown in the app and saved data remain unchanged.
+                              const names = growers.map(g => g.name || "");
+                              const fathers = growers.map(g => g.fatherName || "");
+                              const villages = growers.map(g => g.village || "");
                               const allTexts = [...names, ...fathers, ...villages];
                               const tr = await translateToTelugu(allTexts);
+
                               const n = growers.length;
-                              const tNames = tr.slice(0,n);
-                              const tFathers = tr.slice(n,2*n);
-                              const tVillages = tr.slice(2*n,3*n);
-                              const totalPkts = growers.filter(g=>g.result==="Pass").reduce((s,g)=>s+(parseFloat(g.packets)||0),0);
-                              const totalAmt = growers.filter(g=>g.result==="Pass").reduce((s,g)=>s+(parseFloat(g.packets)||0)*(getSubOrgVarietyRate(g.variety)||parseFloat(g.rate)||0),0);
+                              const tNames = tr.slice(0, n);
+                              const tFathers = tr.slice(n, 2 * n);
+                              const tVillages = tr.slice(2 * n, 3 * n);
+                              const totalPkts = growers
+                                .filter(g => g.result === "Pass")
+                                .reduce((s, g) => s + (parseFloat(g.packets) || 0), 0);
+                              const totalAmt = growers
+                                .filter(g => g.result === "Pass")
+                                .reduce((s, g) => s + (parseFloat(g.packets) || 0) * (getSubOrgVarietyRate(g.variety) || parseFloat(g.rate) || 0), 0);
+
                               let rowsHtml = "";
-                              growers.forEach((g,i)=>{
-                                const vpR=getSubOrgVarietyRate(g.variety)||parseFloat(g.rate)||0;
-                                const vpT=getSubOrgVarietyType(g.variety)||(g.type||"KMS");
-                                const ip=g.result==="Pass";
-                                const amt=ip?(parseFloat(g.packets)||0)*vpR:0;
-                                const bg=ip?(i%2===0?"#fff":"#f5faff"):"#fdecea";
-                                rowsHtml += "<tr style=\"background:"+bg+"\">"
-                                  +"<td style=\"padding:5px 8px;border:1px solid #ddd;text-align:center\">"+(g.sNo||i+1)+"</td>"
-                                  +"<td style=\"padding:5px 8px;border:1px solid #ddd\">"+(g.lotNo||"")+"</td>"
-                                  +"<td style=\"padding:5px 8px;border:1px solid #ddd;font-weight:600\">"+(tNames[i]||g.name||"")+"</td>"
-                                  +"<td style=\"padding:5px 8px;border:1px solid #ddd\">"+(tFathers[i]||g.fatherName||"")+"</td>"
-                                  +"<td style=\"padding:5px 8px;border:1px solid #ddd\">"+(tVillages[i]||g.village||"")+"</td>"
-                                  +"<td style=\"padding:5px 8px;border:1px solid #ddd\">"+(g.variety||"")+"</td>"
-                                  +"<td style=\"padding:5px 8px;border:1px solid #ddd;text-align:center\">"+(ip?parseFloat(g.packets)||0:"—")+"</td>"
-                                  +"<td style=\"padding:5px 8px;border:1px solid #ddd;text-align:center;font-weight:700;color:"+(ip?"#155724":"#721c24")+"\">"+(ip?"✓P":"✗F")+"</td>"
-                                  +"<td style=\"padding:5px 8px;border:1px solid #ddd;text-align:center\">"+vpT+"</td>"
-                                  +"<td style=\"padding:5px 8px;border:1px solid #ddd;text-align:right\">₹"+vpR.toLocaleString("en-IN")+"</td>"
-                                  +"<td style=\"padding:5px 8px;border:1px solid #ddd;text-align:right;font-weight:600;color:#1a6a1a\">"+(ip?"₹"+amt.toLocaleString("en-IN"):"—")+"</td>"
-                                  +"<td style=\"padding:5px 8px;border:1px solid #ddd;font-size:11px;color:#856404\">"+(g.note||"")+"</td></tr>";
+                              growers.forEach((g, i) => {
+                                const vpR = getSubOrgVarietyRate(g.variety) || parseFloat(g.rate) || 0;
+                                const vpT = getSubOrgVarietyType(g.variety) || (g.type || "KMS");
+                                const ip = g.result === "Pass";
+                                const amt = ip ? (parseFloat(g.packets) || 0) * vpR : 0;
+                                const bg = ip ? (i % 2 === 0 ? "#fff" : "#f5faff") : "#fdecea";
+
+                                rowsHtml += "<tr style=\"background:" + bg + "\">"
+                                  + "<td style=\"padding:5px 8px;border:1px solid #ddd;text-align:center\">" + (g.sNo || i + 1) + "</td>"
+                                  + "<td style=\"padding:5px 8px;border:1px solid #ddd\">" + (g.lotNo || "") + "</td>"
+                                  + "<td style=\"padding:5px 8px;border:1px solid #ddd;font-weight:600\">" + (tNames[i] || g.name || "") + "</td>"
+                                  + "<td style=\"padding:5px 8px;border:1px solid #ddd\">" + (tFathers[i] || g.fatherName || "") + "</td>"
+                                  + "<td style=\"padding:5px 8px;border:1px solid #ddd\">" + (tVillages[i] || g.village || "") + "</td>"
+                                  + "<td style=\"padding:5px 8px;border:1px solid #ddd\">" + (g.variety || "") + "</td>"
+                                  + "<td style=\"padding:5px 8px;border:1px solid #ddd;text-align:center\">" + (ip ? parseFloat(g.packets) || 0 : "—") + "</td>"
+                                  + "<td style=\"padding:5px 8px;border:1px solid #ddd;text-align:center;font-weight:700;color:" + (ip ? "#155724" : "#721c24") + "\">" + (ip ? "✓P" : "✗F") + "</td>"
+                                  + "<td style=\"padding:5px 8px;border:1px solid #ddd;text-align:center\">" + vpT + "</td>"
+                                  + "<td style=\"padding:5px 8px;border:1px solid #ddd;text-align:right\">₹" + vpR.toLocaleString("en-IN") + "</td>"
+                                  + "<td style=\"padding:5px 8px;border:1px solid #ddd;text-align:right;font-weight:600;color:#1a6a1a\">" + (ip ? "₹" + amt.toLocaleString("en-IN") : "—") + "</td>"
+                                  + "<td style=\"padding:5px 8px;border:1px solid #ddd;font-size:11px;color:#856404\">" + (g.note || "") + "</td></tr>";
                               });
+
                               const html = "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"/>"
-                                +"<link href=\"https://fonts.googleapis.com/css2?family=Noto+Serif+Telugu&display=swap\" rel=\"stylesheet\"/>"
-                                +"<title>Growers (Telugu) — "+so.name+"</title>"
-                                +"<style>body{font-family:\"Noto Serif Telugu\",Georgia,serif;padding:20px;}h2{color:#1a2a4a;}table{border-collapse:collapse;width:100%;font-size:12px;}th{background:#1a2a4a;color:#fff;padding:6px 8px;border:1px solid #ddd;}.total-row td{font-weight:800;background:#e8f0ff;border-top:2px solid #1a2a4a;}@media print{@page{margin:8mm;size:A4 landscape;}}</style></head>"
-                                +"<body><h2>Growers — "+so.name+" (#"+so.accNo+")</h2>"
-                                +"<table><thead><tr><th>S.No</th><th>LOT No</th><th>Grower</th><th>Father</th><th>Village</th><th>Variety</th><th>Packets</th><th>Result</th><th>Type</th><th>Rate</th><th>Amount</th><th>Note</th></tr></thead>"
-                                +"<tbody>"+rowsHtml
-                                +"<tr class=\"total-row\"><td colspan=\"6\">TOTAL</td><td style=\"text-align:center;padding:6px 8px;border:1px solid #ddd\">"+totalPkts.toLocaleString("en-IN")+"</td><td colspan=\"3\"></td><td style=\"text-align:right;padding:6px 8px;border:1px solid #ddd\">₹"+Math.round(totalAmt).toLocaleString("en-IN")+"</td><td></td></tr>"
-                                +"</tbody></table></body></html>";
-                              const w=window.open("","_blank"); w.document.write(html); w.document.close(); setTimeout(()=>w.print(),800);
-                              btn.disabled=false; btn.textContent="🔤 Print in Telugu";
-                            } catch(err) {
-                              alert("Translation failed: "+err.message);
-                              btn.disabled=false; btn.textContent="🔤 Print in Telugu";
+                                + "<link href=\"https://fonts.googleapis.com/css2?family=Noto+Serif+Telugu&display=swap\" rel=\"stylesheet\"/>"
+                                + "<title>Growers (Telugu) — " + (so.name || "Sub-Organizer") + "</title>"
+                                + "<style>body{font-family:\"Noto Serif Telugu\",Georgia,serif;padding:20px;}h2{color:#1a2a4a;}table{border-collapse:collapse;width:100%;font-size:12px;}th{background:#1a2a4a;color:#fff;padding:6px 8px;border:1px solid #ddd;}.total-row td{font-weight:800;background:#e8f0ff;border-top:2px solid #1a2a4a;}@media print{@page{margin:8mm;size:A4 landscape;}}</style></head>"
+                                + "<body><h2>Growers — " + (so.name || "Sub-Organizer") + " (#" + (so.accNo || "") + ")</h2>"
+                                + "<table><thead><tr><th>S.No</th><th>LOT No</th><th>Grower</th><th>Father</th><th>Village</th><th>Variety</th><th>Packets</th><th>Result</th><th>Type</th><th>Rate</th><th>Amount</th><th>Note</th></tr></thead>"
+                                + "<tbody>" + rowsHtml
+                                + "<tr class=\"total-row\"><td colspan=\"6\">TOTAL</td><td style=\"text-align:center;padding:6px 8px;border:1px solid #ddd\">" + totalPkts.toLocaleString("en-IN") + "</td><td colspan=\"3\"></td><td style=\"text-align:right;padding:6px 8px;border:1px solid #ddd\">₹" + Math.round(totalAmt).toLocaleString("en-IN") + "</td><td></td></tr>"
+                                + "</tbody></table></body></html>";
+
+                              if (printWindow.closed) throw new Error("The print window was closed before printing.");
+                              printWindow.document.open();
+                              printWindow.document.write(html);
+                              printWindow.document.close();
+
+                              const startPrint = () => {
+                                if (!printWindow.closed) {
+                                  printWindow.focus();
+                                  printWindow.print();
+                                }
+                              };
+
+                              if (printWindow.document.fonts && printWindow.document.fonts.ready) {
+                                printWindow.document.fonts.ready.then(() => setTimeout(startPrint, 150));
+                              } else {
+                                setTimeout(startPrint, 800);
+                              }
+                            } catch (err) {
+                              if (!printWindow.closed) printWindow.close();
+                              alert("Telugu print failed: " + err.message);
+                            } finally {
+                              btn.disabled = false;
+                              btn.textContent = "🔤 Print in Telugu";
                             }
                           }} style={{background:"#6a1a8a",color:"#fff",border:"none",borderRadius:5,padding:"5px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>🔤 Print in Telugu</button>
                         <button onClick={()=>{
@@ -3263,8 +3307,6 @@ export default function App() {
                         }} style={{background:"#1a2a4a",color:"#fff",border:"none",borderRadius:5,padding:"5px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>🖨️ Print Growers</button>
                         </div>
                         </div>
-                        </div>
-                      </div>
                       <div style={{ overflowX:"auto",borderRadius:8,border:"1px solid #b0c8e0" }}>
                         <table style={{ borderCollapse:"collapse",minWidth:900,width:"100%",fontSize:12 }}>
                           <thead>
@@ -3761,7 +3803,7 @@ export default function App() {
               <div style={{background:"#fff",borderRadius:10,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
                 <div style={{fontWeight:700,fontSize:13,color:"#1a4a1a",marginBottom:12}}>💰 Balance Pending — Top Farmers</div>
                 {fStats.filter(f=>f.balance>0).length===0?<div style={{color:"#aaa",fontSize:12,textAlign:"center",padding:20}}>No pending balances</div>:
-                  <Bar data={fStats.filter(f=>f.balance>0).sort((a,b)=>b.balance-a.balance).slice(0,8).map(f=>[`#${f.farmerNo||"?"} ${f.name}`,f.balance])} color="#1a6a1a" maxV={Math.max(...fStats.filter(f=>f.balance>0).map(f=>f.balance),1)} vf={fmt} />
+                  <Bar data={fStats.filter(f=>f.balance>0).sort((a,b)=>b.balance-a.balance).slice(0,8).map(f=>["#"+(f.farmerNo||"?")+" "+f.name,f.balance])} color="#1a6a1a" maxV={Math.max(...fStats.filter(f=>f.balance>0).map(f=>f.balance),1)} vf={fmt} />
                 }
               </div>
               <div style={{background:"#fff",borderRadius:10,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
@@ -4463,11 +4505,11 @@ export default function App() {
               const el = document.getElementById("bill-queue-single");
               if (!el) { billDiv.remove(); resolve(); return; }
               const billHTML = el.outerHTML;
-              const fname = "bill_"+((farmer?.farmerNo||"").replace(/[^a-zA-Z0-9-_]/g,"_")}_${(farmer?.name||"").replace(/\s+/g,"_").substring(0,20));
-              const fullHTML = "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"/><title>${fname}</title>"
+              const fname = "bill_" + ((farmer?.farmerNo || "").replace(/[^a-zA-Z0-9-_]/g, "_")) + "_" + ((farmer?.name || "").replace(/\s+/g, "_").substring(0, 20));
+              const fullHTML = "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"/><title>" + fname + "</title>"
   +"\n                <link href=\"https://fonts.googleapis.com/css2?family=Noto+Serif+Telugu&family=Noto+Serif:wght@400;600;700&display=swap\" rel=\"stylesheet\"/>"
   +"\n                <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Noto Serif',Georgia,serif;padding:10px;background:#fff;}table{border-collapse:collapse;width:100%;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}@page{margin:8mm;size:A4 portrait;}</style>"
-  +"\n                </head><body>${billHTML}"
+  +"\n                </head><body>" + billHTML
   +"\n                <script>document.fonts.ready.then(()=>{setTimeout(()=>{window.print();},600);});<\/script>"
   +"\n                </body></html>";
               const blob = new Blob([fullHTML], {type:"text/html;charset=utf-8"});
@@ -4515,11 +4557,11 @@ export default function App() {
                   if (!el) continue;
                   const billHTML = el.outerHTML;
                   const f = remaining[i];
-                  const fname = "bill_"+((f?.farmerNo||"").replace(/[^a-zA-Z0-9-_]/g,"_")}_${(f?.name||"").replace(/\s+/g,"_").substring(0,20));
-                  const fullHTML = "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"/><title>${fname}</title>"
+                  const fname = "bill_" + ((f?.farmerNo || "").replace(/[^a-zA-Z0-9-_]/g, "_")) + "_" + ((f?.name || "").replace(/\s+/g, "_").substring(0, 20));
+                  const fullHTML = "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"/><title>" + fname + "</title>"
   +"\n                    <link href=\"https://fonts.googleapis.com/css2?family=Noto+Serif+Telugu&family=Noto+Serif:wght@400;600;700&display=swap\" rel=\"stylesheet\"/>"
   +"\n                    <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Noto Serif',Georgia,serif;padding:10px;background:#fff;}table{border-collapse:collapse;width:100%;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}@page{margin:8mm;size:A4 portrait;}</style>"
-  +"\n                    </head><body>${billHTML}"
+  +"\n                    </head><body>" + billHTML
   +"\n                    <script>document.fonts.ready.then(()=>{setTimeout(()=>{window.print();},600);});<\/script>"
   +"\n                    </body></html>";
                   const blob = new Blob([fullHTML], {type:"text/html;charset=utf-8"});
