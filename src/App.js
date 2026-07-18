@@ -124,13 +124,36 @@ function BillPreview({ farmer, varietySettings, getVarietyBillDate, isVarietyPai
   const _getVarietyType = getVarietyType || (() => null);
 
   const billNo = `BILL-${farmer.farmerNo || farmer.id || "001"}-2026`;
-  const advCalc = (farmer.advances || []).map(a => {
+  const advBillDateFor = (a) => {
     // Use earliest paid variety bill date for advance interest
     const paidDates = (farmer.crops||[]).filter(c=>c.result==="Pass"&&_isVarietyPaid(c.variety)).map(c=>_getVarietyBillDate(c.variety));
-    const advBillDate = a.tillDate || (paidDates.length > 0 ? paidDates.reduce((a,b)=>a<b?a:b) : BILL_DATE);
-    const { days, interest } = (a.compound?calcCompoundInterest:calcInterest)(a.amount, a.interestRate, a.date, advBillDate);
-    return { ...a, days, interest, total: a.amount + interest };
-  });
+    return a.tillDate || (paidDates.length > 0 ? paidDates.reduce((a,b)=>a<b?a:b) : BILL_DATE);
+  };
+  // Resolve advances in dependency order so a carry-forward entry's "amount" is always
+  // derived live from its source advance's current total — never a stale snapshot.
+  // This keeps Part totals tallying even if the source advance is edited afterward.
+  const rawAdvances = farmer.advances || [];
+  const cfIdToIdx = {};
+  rawAdvances.forEach((a, idx) => { if (a.cfId) cfIdToIdx[a.cfId] = idx; });
+  const resolved = {};
+  let pending = rawAdvances.map((_, idx) => idx);
+  for (let pass = 0; pass < rawAdvances.length + 1 && pending.length > 0; pass++) {
+    const stillPending = [];
+    pending.forEach(idx => {
+      const a = rawAdvances[idx];
+      const srcIdx = a.carryForwardFrom ? cfIdToIdx[a.carryForwardFrom] : undefined;
+      if (a.carryForwardFrom && srcIdx !== undefined && !resolved[srcIdx]) {
+        stillPending.push(idx); // source not resolved yet — retry next pass
+        return;
+      }
+      const effectiveAmount = (srcIdx !== undefined && resolved[srcIdx]) ? resolved[srcIdx].total : (parseFloat(a.amount) || 0);
+      const advBillDate = advBillDateFor(a);
+      const { days, interest } = (a.compound?calcCompoundInterest:calcInterest)(effectiveAmount, a.interestRate, a.date, advBillDate);
+      resolved[idx] = { ...a, amount: effectiveAmount, days, interest, total: effectiveAmount + interest };
+    });
+    pending = stillPending;
+  }
+  const advCalc = rawAdvances.map((a, idx) => resolved[idx] || { ...a, amount: parseFloat(a.amount)||0, days: 0, interest: 0, total: parseFloat(a.amount)||0 });
   // For settlement summary — only count the LAST entry of each carry-forward chain
   // An advance is intermediate if a later entry was explicitly carried forward from it (linked via cfId)
   const isIntermediate = (a) => {
