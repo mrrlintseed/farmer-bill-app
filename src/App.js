@@ -3723,6 +3723,38 @@ export default function App() {
           }).join('');
           const total = farmersList.reduce((s,f)=>s+getFarmerBalance(f),0);
           const totalText = '₹'+Math.abs(Math.round(total)).toLocaleString('en-IN')+' '+(total>=0?'(Pay to C/o)':'(Due from C/o)');
+
+          // Variety Summary — aggregated across all farmers in this C/o group
+          const varietyMapP = {};
+          farmersList.forEach(f => {
+            (f.crops||[]).forEach(c => {
+              if (!c.variety) return;
+              if (!varietyMapP[c.variety]) varietyMapP[c.variety] = { area: 0, qty: 0 };
+              varietyMapP[c.variety].area += parseFloat(c.area) || 0;
+              if (c.result === "Pass") varietyMapP[c.variety].qty += parseFloat(c.quantity) || 0;
+            });
+          });
+          const varietyListP = Object.keys(varietyMapP).sort();
+          const varietyRows = varietyListP.map((variety,i) => {
+            const {area, qty} = varietyMapP[variety];
+            return '<tr>'
+              +'<td style="'+td+'text-align:center;">'+(i+1)+'</td>'
+              +'<td style="'+td+'">'+variety+'</td>'
+              +'<td style="'+td+'text-align:center;">'+(area>0?(area+' Ac'):'—')+'</td>'
+              +'<td style="'+td+'text-align:center;">₹'+Math.round(area*1000).toLocaleString('en-IN')+'</td>'
+              +'<td style="'+td+'text-align:center;">'+qty.toLocaleString('en-IN')+'</td>'
+              +'</tr>';
+          }).join('');
+          const totalAreaP = varietyListP.reduce((s,v)=>s+varietyMapP[v].area, 0);
+          const totalFoundationP = varietyListP.reduce((s,v)=>s+varietyMapP[v].area*1000, 0);
+          const totalQtyP = varietyListP.reduce((s,v)=>s+varietyMapP[v].qty, 0);
+          const varietySection = varietyListP.length === 0 ? '' :
+            '<h2>Variety Summary</h2>'
+            +'<table><thead><tr><th>S.No</th><th>Variety</th><th>Area (Ac)</th><th>Foundation (₹)</th><th>Quantity (Pkts)</th></tr></thead>'
+            +'<tbody>'+varietyRows
+            +'<tr class="total-row"><td colspan="2">TOTAL</td><td style="text-align:center;padding:8px 10px;border:1px solid #ccc;">'+totalAreaP+' Ac</td><td style="text-align:center;padding:8px 10px;border:1px solid #ccc;">₹'+Math.round(totalFoundationP).toLocaleString('en-IN')+'</td><td style="text-align:center;padding:8px 10px;border:1px solid #ccc;">'+totalQtyP.toLocaleString('en-IN')+'</td></tr>'
+            +'</tbody></table>';
+
           const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"/>'
             +'<title>C/o Summary - '+name+'</title>'
             +'<style>body{font-family:Georgia,serif;padding:20px;color:#222;}h2{color:#1a4a1a;}table{border-collapse:collapse;width:100%;margin-top:14px;}th{background:#1a4a1a;color:#fff;padding:8px 10px;text-align:left;border:1px solid #ccc;}.total-row td{font-weight:800;border-top:2px solid #1a4a1a;background:#f0f7f0;}@media print{@page{margin:10mm;size:A4 portrait;}}</style></head><body>'
@@ -3732,7 +3764,9 @@ export default function App() {
             +'<table><thead><tr><th>Farmer No</th><th>Name</th><th>Village</th><th>Variety</th><th>Qty</th><th>Balance</th></tr></thead>'
             +'<tbody>'+rows
             +'<tr class="total-row"><td colspan="5">TOTAL</td><td style="text-align:right;padding:8px 10px;border:1px solid #ccc;">'+totalText+'</td></tr>'
-            +'</tbody></table></body></html>';
+            +'</tbody></table>'
+            +varietySection
+            +'</body></html>';
           const w = window.open("", "_blank");
           w.document.write(html);
           w.document.close();
@@ -3836,6 +3870,60 @@ export default function App() {
                         </tbody>
                       </table>
                     </div>
+
+                    {/* ── VARIETY SUMMARY across all farmers in this C/o group ── */}
+                    {(() => {
+                      const varietyMap = {};
+                      farmersList.forEach(f => {
+                        (f.crops||[]).forEach(c => {
+                          if (!c.variety) return;
+                          if (!varietyMap[c.variety]) varietyMap[c.variety] = { area: 0, qty: 0 };
+                          varietyMap[c.variety].area += parseFloat(c.area) || 0;
+                          if (c.result === "Pass") varietyMap[c.variety].qty += parseFloat(c.quantity) || 0;
+                        });
+                      });
+                      const varietyList = Object.keys(varietyMap).sort();
+                      if (varietyList.length === 0) return null;
+                      const totalArea = varietyList.reduce((s,v)=>s+varietyMap[v].area, 0);
+                      const totalFoundation = varietyList.reduce((s,v)=>s+varietyMap[v].area*1000, 0);
+                      const totalQty = varietyList.reduce((s,v)=>s+varietyMap[v].qty, 0);
+                      return (
+                        <div style={{ background:"#fff", border:"1px solid #c8dfc8", borderRadius:8, overflow:"hidden", marginTop:16 }}>
+                          <div style={{ padding:"10px 14px", fontWeight:700, fontSize:13, color:"#1a4a1a", background:"#f0f7f0", borderBottom:"1px solid #c8dfc8" }}>
+                            VARIETY SUMMARY | వెరైటీ వివరాలు
+                          </div>
+                          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
+                            <thead>
+                              <tr style={{ background:"#1a2a4a", color:"#fff" }}>
+                                {["S.No","Variety","Area (Ac)","Foundation (₹)","Quantity (Pkts)"].map(h=>(
+                                  <th key={h} style={{ padding:"6px 10px", textAlign:"center", fontSize:11, fontWeight:600 }}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {varietyList.map((variety,i) => {
+                                const {area, qty} = varietyMap[variety];
+                                return (
+                                  <tr key={variety} style={{ background:i%2===0?"#f5f8ff":"#fff", borderBottom:"1px solid #eee" }}>
+                                    <td style={{ padding:"6px 10px", textAlign:"center", fontSize:12 }}>{i+1}</td>
+                                    <td style={{ padding:"6px 10px", textAlign:"left", fontSize:12, fontWeight:600 }}>{variety}</td>
+                                    <td style={{ padding:"6px 10px", textAlign:"center", fontSize:12 }}>{area>0?`${area} Ac`:"—"}</td>
+                                    <td style={{ padding:"6px 10px", textAlign:"center", fontSize:12 }}>₹{Math.round(area*1000).toLocaleString("en-IN")}</td>
+                                    <td style={{ padding:"6px 10px", textAlign:"center", fontSize:12, fontWeight:600 }}>{qty.toLocaleString("en-IN")}</td>
+                                  </tr>
+                                );
+                              })}
+                              <tr style={{ background:"#e8f0ff", fontWeight:700 }}>
+                                <td colSpan={2} style={{ padding:"6px 10px", fontSize:12, color:"#1a4a1a" }}>TOTAL</td>
+                                <td style={{ padding:"6px 10px", textAlign:"center", fontSize:12 }}>{totalArea} Ac</td>
+                                <td style={{ padding:"6px 10px", textAlign:"center", fontSize:12 }}>₹{Math.round(totalFoundation).toLocaleString("en-IN")}</td>
+                                <td style={{ padding:"6px 10px", textAlign:"center", fontSize:12 }}>{totalQty.toLocaleString("en-IN")}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })()}
