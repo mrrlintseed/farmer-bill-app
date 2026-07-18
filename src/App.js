@@ -8,6 +8,7 @@ import { storage } from "./storage";
 import { downloadFarmerBillPDF, downloadAllBillsPDF } from "./pdfGenerator";
 
 const DEFAULT_BILL_DATE = "2026-07-01";
+const FOUNDATION_RATE = 1200; // ₹ per acre for foundation seed cost
 // App version: 2026-07-02-v3-foundation-seeds-fix
 // Global BILL_DATE reads from localStorage so outside-App functions can use it
 let BILL_DATE = (() => { try { return localStorage.getItem("app_bill_date")||DEFAULT_BILL_DATE; } catch { return DEFAULT_BILL_DATE; } })();
@@ -173,7 +174,7 @@ function BillPreview({ farmer, varietySettings, getVarietyBillDate, isVarietyPai
     const vRate = (c.rateOverride === true) ? (parseFloat(c.ratePerUnit) || 0) : (_getVarietyRate(c.variety) || (parseFloat(c.ratePerUnit) || 0));
     const vType = _getVarietyType(c.variety) || c.cropType || "KMS";
     const isPaidPass = c.result === "Pass" && vPaid;
-    return { ...c, cropType: vType, rateUsed: vRate, value: isPaidPass ? qty * vRate : 0, pendingValue: (c.result === "Pass" && !vPaid) ? qty * vRate : 0, foundation: area * 1000, transportation: qty, vBillDate, vPaid };
+    return { ...c, cropType: vType, rateUsed: vRate, value: isPaidPass ? qty * vRate : 0, pendingValue: (c.result === "Pass" && !vPaid) ? qty * vRate : 0, foundation: area * FOUNDATION_RATE, transportation: qty, vBillDate, vPaid };
   });
   const totalCropValue = cropsCalc.reduce((s, c) => s + c.value, 0);
   const totalFoundation = cropsCalc.reduce((s, c) => s + c.foundation, 0);
@@ -577,7 +578,7 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
   const totalToPayAmt = growersCalc.filter(g=>g.vToPay&&g.result==="Pass").reduce((s,g)=>s+g.calcAmt,0);
   const totalPendingAmt = growersCalc.reduce((s,g) => s + g.pendingAmt, 0);
   // Foundation from foundationSeeds (set in Excel Sheet2)
-  const totalFoundation = (so.foundationSeeds||[]).reduce((s,fs) => s + (parseFloat(fs.area)||0) * 1000, 0);
+  const totalFoundation = (so.foundationSeeds||[]).reduce((s,fs) => s + (parseFloat(fs.area)||0) * FOUNDATION_RATE, 0);
   const totalTransport = passGrowers.reduce((s, g) => s + (parseFloat(g.packets) || 0), 0);
   // Jamma calculation — only in final bill
   const jammaCalcSO = (_billMode === "partial" ? [] : (so.jammaEntries||[])).map(j => {
@@ -1231,7 +1232,7 @@ function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVar
               </div>
               <div style={{marginTop:5,fontSize:11,padding:"3px 8px",background:"#fdecea",borderRadius:4,color:"#721c24",display:"flex",gap:14,flexWrap:"wrap"}}>
                 <span>⚠ Always charged:</span>
-                <span>Foundation: {area>0?`${area} × ₹1000 = ₹${(area*1000).toLocaleString("en-IN")}`:"Enter area"}</span>
+                <span>Foundation: {area>0?`${area} × ₹${FOUNDATION_RATE} = ₹${(area*FOUNDATION_RATE).toLocaleString("en-IN")}`:"Enter area"}</span>
                 <span>Transport: {qty} × ₹1 = <strong>₹{qty.toLocaleString("en-IN")}</strong></span>
               </div>
             </div>
@@ -1601,7 +1602,7 @@ export default function App() {
       const vRate=(c.rateOverride===true)?(parseFloat(c.ratePerUnit)||0):(getVarietyRate(c.variety)||parseFloat(c.ratePerUnit)||0);
       const paid=isVarietyPaid(c.variety);
       if(c.result==="Pass"&&paid) cropVal+=qty*vRate;
-      found+=(parseFloat(c.area)||0)*1000;
+      found+=(parseFloat(c.area)||0)*FOUNDATION_RATE;
       trans+=qty;
     });
     const paidDates=(f.crops||[]).filter(c=>c.result==="Pass"&&isVarietyPaid(c.variety)).map(c=>getVarietyBillDate(c.variety));
@@ -1917,7 +1918,7 @@ export default function App() {
           const paid = isVarietyPaid(c.variety);
           const cropVal = (c.result==="Pass"&&paid) ? qty*vRate : 0;
           totalCrop += cropVal;
-          totalFound += area*1000;
+          totalFound += area*FOUNDATION_RATE;
           totalTrans += qty;
           row[`Crop${i+1} Variety`] = c.variety||"";
           row[`Crop${i+1} LOT No`]  = c.lotNo||"";
@@ -2764,7 +2765,7 @@ export default function App() {
                         const vRate=(c.rateOverride===true)?(parseFloat(c.ratePerUnit)||0):(getVarietyRate(c.variety)||parseFloat(c.ratePerUnit)||0);
                         const paid=isVarietyPaid(c.variety);
                         if(c.result==="Pass"&&paid) cropVal+=qty*vRate;
-                        found+=(parseFloat(c.area)||0)*1000;
+                        found+=(parseFloat(c.area)||0)*FOUNDATION_RATE;
                         trans+=qty;
                       });
                       const paidDates=(f.crops||[]).filter(c=>c.result==="Pass"&&isVarietyPaid(c.variety)).map(c=>getVarietyBillDate(c.variety));
@@ -2991,7 +2992,7 @@ export default function App() {
                   const rate = getSubOrgVarietyRate(g.variety)||parseFloat(g.rate)||0;
                   return s+(parseFloat(g.packets)||0)*rate;
                 },0);
-                const totalFound = (so.foundationSeeds||[]).reduce((s,f)=>s+(parseFloat(f.area)||0)*1000,0);
+                const totalFound = (so.foundationSeeds||[]).reduce((s,f)=>s+(parseFloat(f.area)||0)*FOUNDATION_RATE,0);
                 const totalTrans = totalQty;
                 const totalJammaWI = (so.jammaEntries||[]).reduce((s,j)=>{
                   const {interest} = calcInterest(parseFloat(j.amount)||0, parseFloat(j.interestRate)||0, j.date||BILL_DATE, BILL_DATE);
@@ -3202,7 +3203,7 @@ export default function App() {
                       <div style={{marginTop:16,paddingTop:12,borderTop:"2px solid #2d6a2d"}}>
                         <div style={{fontWeight:700,fontSize:13,color:"#2d6a2d",marginBottom:10}}>
                           🌱 Foundation Seeds &nbsp;
-                          <span style={{fontWeight:400,fontSize:11,color:"#888"}}>(₹1000 per acre deducted)</span>
+                          <span style={{fontWeight:400,fontSize:11,color:"#888"}}>(₹{FOUNDATION_RATE} per acre deducted)</span>
                           <button
                             onClick={()=>{const fs=[...(so.foundationSeeds||[]),{variety:"",area:""}];updateSO({...so,foundationSeeds:fs});}}
                             style={{float:"right",background:"#e8f5e9",color:"#2d6a2d",border:"1px solid #2d6a2d",borderRadius:4,padding:"3px 12px",fontSize:12,cursor:"pointer",fontWeight:700}}>
@@ -3235,7 +3236,7 @@ export default function App() {
                                       style={{width:"100%",padding:"4px 6px",border:"1px solid #b0c8b0",borderRadius:4,fontSize:13,textAlign:"center"}} />
                                   </td>
                                   <td style={{padding:"4px 6px",border:"1px solid #c8e6c9",textAlign:"center",color:"#c0392b",fontWeight:600}}>
-                                    ₹{((parseFloat(fs.area)||0)*1000).toLocaleString("en-IN")}
+                                    ₹{((parseFloat(fs.area)||0)*FOUNDATION_RATE).toLocaleString("en-IN")}
                                   </td>
                                   <td style={{padding:"4px 6px",border:"1px solid #c8e6c9",textAlign:"center"}}>
                                     <button onClick={()=>{const a=(so.foundationSeeds||[]).filter((_,k)=>k!==fi);updateSO({...so,foundationSeeds:a});}}
@@ -3246,7 +3247,7 @@ export default function App() {
                               <tr style={{background:"#e8f5e9",fontWeight:700}}>
                                 <td style={{padding:"5px 8px",border:"1px solid #c8e6c9"}}>TOTAL</td>
                                 <td style={{padding:"5px 8px",border:"1px solid #c8e6c9",textAlign:"center"}}>{(so.foundationSeeds||[]).reduce((s,f)=>s+(parseFloat(f.area)||0),0)} Ac</td>
-                                <td style={{padding:"5px 8px",border:"1px solid #c8e6c9",textAlign:"center",color:"#c0392b"}}>₹{((so.foundationSeeds||[]).reduce((s,f)=>s+(parseFloat(f.area)||0),0)*1000).toLocaleString("en-IN")}</td>
+                                <td style={{padding:"5px 8px",border:"1px solid #c8e6c9",textAlign:"center",color:"#c0392b"}}>₹{((so.foundationSeeds||[]).reduce((s,f)=>s+(parseFloat(f.area)||0),0)*FOUNDATION_RATE).toLocaleString("en-IN")}</td>
                                 <td style={{border:"1px solid #c8e6c9"}}></td>
                               </tr>
                             </tbody>
@@ -3741,12 +3742,12 @@ export default function App() {
               +'<td style="'+td+'text-align:center;">'+(i+1)+'</td>'
               +'<td style="'+td+'">'+variety+'</td>'
               +'<td style="'+td+'text-align:center;">'+(area>0?(area+' Ac'):'—')+'</td>'
-              +'<td style="'+td+'text-align:center;">₹'+Math.round(area*1000).toLocaleString('en-IN')+'</td>'
+              +'<td style="'+td+'text-align:center;">₹'+Math.round(area*FOUNDATION_RATE).toLocaleString('en-IN')+'</td>'
               +'<td style="'+td+'text-align:center;">'+qty.toLocaleString('en-IN')+'</td>'
               +'</tr>';
           }).join('');
           const totalAreaP = varietyListP.reduce((s,v)=>s+varietyMapP[v].area, 0);
-          const totalFoundationP = varietyListP.reduce((s,v)=>s+varietyMapP[v].area*1000, 0);
+          const totalFoundationP = varietyListP.reduce((s,v)=>s+varietyMapP[v].area*FOUNDATION_RATE, 0);
           const totalQtyP = varietyListP.reduce((s,v)=>s+varietyMapP[v].qty, 0);
           const varietySection = varietyListP.length === 0 ? '' :
             '<h2>Variety Summary</h2>'
@@ -3885,7 +3886,7 @@ export default function App() {
                       const varietyList = Object.keys(varietyMap).sort();
                       if (varietyList.length === 0) return null;
                       const totalArea = varietyList.reduce((s,v)=>s+varietyMap[v].area, 0);
-                      const totalFoundation = varietyList.reduce((s,v)=>s+varietyMap[v].area*1000, 0);
+                      const totalFoundation = varietyList.reduce((s,v)=>s+varietyMap[v].area*FOUNDATION_RATE, 0);
                       const totalQty = varietyList.reduce((s,v)=>s+varietyMap[v].qty, 0);
                       return (
                         <div style={{ background:"#fff", border:"1px solid #c8dfc8", borderRadius:8, overflow:"hidden", marginTop:16 }}>
@@ -3908,7 +3909,7 @@ export default function App() {
                                     <td style={{ padding:"6px 10px", textAlign:"center", fontSize:12 }}>{i+1}</td>
                                     <td style={{ padding:"6px 10px", textAlign:"left", fontSize:12, fontWeight:600 }}>{variety}</td>
                                     <td style={{ padding:"6px 10px", textAlign:"center", fontSize:12 }}>{area>0?`${area} Ac`:"—"}</td>
-                                    <td style={{ padding:"6px 10px", textAlign:"center", fontSize:12 }}>₹{Math.round(area*1000).toLocaleString("en-IN")}</td>
+                                    <td style={{ padding:"6px 10px", textAlign:"center", fontSize:12 }}>₹{Math.round(area*FOUNDATION_RATE).toLocaleString("en-IN")}</td>
                                     <td style={{ padding:"6px 10px", textAlign:"center", fontSize:12, fontWeight:600 }}>{qty.toLocaleString("en-IN")}</td>
                                   </tr>
                                 );
@@ -3936,7 +3937,7 @@ export default function App() {
         const allF=farmers||[];
         const fStats=allF.map(f=>{
           const advWI=(f.advances||[]).reduce((s,a)=>{const{interest}=(a.compound?calcCompoundInterest:calcInterest)(a.amount,a.interestRate,a.date);return s+a.amount+interest;},0);
-          const cCalc=(f.crops||[]).map(c=>{const area=parseFloat(c.area)||0,qty=parseFloat(c.quantity)||0;return{value:c.result==="Pass"?qty*(parseFloat(c.ratePerUnit)||0):0,foundation:area*1000,transport:qty};});
+          const cCalc=(f.crops||[]).map(c=>{const area=parseFloat(c.area)||0,qty=parseFloat(c.quantity)||0;return{value:c.result==="Pass"?qty*(parseFloat(c.ratePerUnit)||0):0,foundation:area*FOUNDATION_RATE,transport:qty};});
           const cropVal=cCalc.reduce((s,c)=>s+c.value,0);
           const found=cCalc.reduce((s,c)=>s+c.foundation,0);
           const trans=cCalc.reduce((s,c)=>s+c.transport,0);
@@ -3959,7 +3960,7 @@ export default function App() {
           const advWI=(so.advances||[]).reduce((s,a)=>{const{interest}=(a.compound?calcCompoundInterest:calcInterest)(parseFloat(a.amount)||0,parseFloat(a.interestRate)||0,a.date);return s+(parseFloat(a.amount)||0)+interest;},0);
           const g=so.growers||[];
           const seedAmt=g.filter(gr=>gr.result==="Pass").reduce((s,gr)=>s+(parseFloat(gr.packets)||0)*(parseFloat(gr.rate)||0),0);
-          const found=g.reduce((s,gr)=>s+(parseFloat(gr.area)||0)*1000,0);
+          const found=g.reduce((s,gr)=>s+(parseFloat(gr.area)||0)*FOUNDATION_RATE,0);
           const trans=g.reduce((s,gr)=>s+(parseFloat(gr.packets)||0),0);
           return{...so,balance:seedAmt-advWI-found-trans,seedAmt,growerCount:g.length,passCount:g.filter(gr=>gr.result==="Pass").length};
         });
@@ -4102,7 +4103,7 @@ export default function App() {
                   const qty = parseFloat(c.quantity)||0;
                   const rateToUse = (c.rateOverride===true) ? (parseFloat(c.ratePerUnit)||0) : (settingsRate || parseFloat(c.ratePerUnit)||0);
                   if (c.result === "Pass") { fCropVal += qty * rateToUse; fQty += qty; }
-                  fFound += (parseFloat(c.area)||0) * 1000;
+                  fFound += (parseFloat(c.area)||0) * FOUNDATION_RATE;
                   fTrans += qty;
                 });
 
