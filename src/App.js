@@ -179,13 +179,36 @@ function BillPreview({ farmer, varietySettings, getVarietyBillDate, isVarietyPai
   const totalFoundation = cropsCalc.reduce((s, c) => s + c.foundation, 0);
   const totalTransport = cropsCalc.reduce((s, c) => s + c.transportation, 0);
 
-  const jammaCalc = (farmer.jammaEnabled ? farmer.jammaEntries || [] : []).map(j => {
-    const jamBillDate = j.tillDate || BILL_DATE;
-    const { days, interest } = calcInterest(parseFloat(j.amount) || 0, parseFloat(j.interestRate) || 0, j.date || BILL_DATE, jamBillDate);
-    return { ...j, days, interest, total: (parseFloat(j.amount) || 0) + interest };
-  });
-  const totalJamma = jammaCalc.reduce((s, j) => s + (parseFloat(j.amount) || 0), 0);
-  const totalJammaInt = jammaCalc.reduce((s, j) => s + j.interest, 0);
+  const rawJamma = farmer.jammaEnabled ? (farmer.jammaEntries || []) : [];
+  const jamCfIdToIdx = {};
+  rawJamma.forEach((j, idx) => { if (j.cfId) jamCfIdToIdx[j.cfId] = idx; });
+  const jamResolved = {};
+  let jamPending = rawJamma.map((_, idx) => idx);
+  for (let pass = 0; pass < rawJamma.length + 1 && jamPending.length > 0; pass++) {
+    const stillPending = [];
+    jamPending.forEach(idx => {
+      const j = rawJamma[idx];
+      const srcIdx = j.carryForwardFrom ? jamCfIdToIdx[j.carryForwardFrom] : undefined;
+      if (j.carryForwardFrom && srcIdx !== undefined && !jamResolved[srcIdx]) {
+        stillPending.push(idx); // source not resolved yet — retry next pass
+        return;
+      }
+      const effectiveAmount = (srcIdx !== undefined && jamResolved[srcIdx]) ? jamResolved[srcIdx].total : (parseFloat(j.amount) || 0);
+      const jamBillDate = j.tillDate || BILL_DATE;
+      const { days, interest } = calcInterest(effectiveAmount, parseFloat(j.interestRate) || 0, j.date || BILL_DATE, jamBillDate);
+      jamResolved[idx] = { ...j, amount: effectiveAmount, days, interest, total: effectiveAmount + interest };
+    });
+    jamPending = stillPending;
+  }
+  const jammaCalc = rawJamma.map((j, idx) => jamResolved[idx] || { ...j, amount: parseFloat(j.amount)||0, days: 0, interest: 0, total: parseFloat(j.amount)||0 });
+  // Settlement summary — only count the LAST entry of each Jamma carry-forward chain
+  const isJammaIntermediate = (j) => {
+    if (!j.cfId) return false;
+    return jammaCalc.some(k => k.carryForwardFrom === j.cfId);
+  };
+  const finalJamma = jammaCalc.filter(j => !isJammaIntermediate(j));
+  const totalJamma = finalJamma.reduce((s, j) => s + (parseFloat(j.amount) || 0), 0);
+  const totalJammaInt = finalJamma.reduce((s, j) => s + j.interest, 0);
   const totalJammaWithInt = totalJamma + totalJammaInt;
   const balance = totalCropValue - totalAdvWithInt + totalJammaWithInt - totalFoundation - totalTransport;
 
@@ -359,16 +382,83 @@ function BillPreview({ farmer, varietySettings, getVarietyBillDate, isVarietyPai
         )}
 
         {/* Jamma */}
-        {farmer.jammaEnabled && jammaCalc.length > 0 && (
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontWeight: 700, color: "#856404", marginBottom: 5, fontSize: 12 }}>JAMMA DETAILS | జమ్మా వివరాలు</div>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 440 }}>
-                <thead><tr style={{ background: "#856404", color: "#fff" }}><TH ch="S.No" /><TH ch="Date" /><TH ch="Note" /><TH ch="Amount(₹)" /><TH ch="Days" /><TH ch="Interest(₹)" /><TH ch="Total(₹)" /></tr></thead>
-                <tbody>
-                  {jammaCalc.map((j, i) => (
-                    <tr key={i} style={{ background: i % 2 === 0 ? "#fffdf0" : "#fff", borderBottom: "1px solid #ffeeba" }}>
-                      <TD ch={i + 1} />
+        {farmer.jammaEnabled && jammaCalc.length > 0 && (() => {
+          const jamHasCarryForward = jammaCalc.some(j => j.carryForwardFrom !== undefined && j.carryForwardFrom !== null && j.carryForwardFrom !== "");
+
+          if (!jamHasCarryForward) {
+            // Single table — original behavior
+            return (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontWeight: 700, color: "#856404", marginBottom: 5, fontSize: 12 }}>JAMMA DETAILS | జమ్మా వివరాలు</div>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 440 }}>
+                    <thead><tr style={{ background: "#856404", color: "#fff" }}><TH ch="S.No" /><TH ch="Date" /><TH ch="Note" /><TH ch="Amount(₹)" /><TH ch="Days" /><TH ch="Interest(₹)" /><TH ch="Total(₹)" /></tr></thead>
+                    <tbody>
+                      {jammaCalc.map((j, i) => (
+                        <tr key={i} style={{ background: i % 2 === 0 ? "#fffdf0" : "#fff", borderBottom: "1px solid #ffeeba" }}>
+                          <TD ch={i + 1} />
+                          <TD ch={j.date ? fmtDate(j.date) : "—"} />
+                          <TD ch={j.note || "—"} />
+                          <TD ch={"₹"+(parseFloat(j.amount) || 0).toLocaleString("en-IN")} s={{ color: "#856404", fontWeight: 600 }} />
+                          <TD ch={j.days} />
+                          <TD ch={"₹"+j.interest.toLocaleString("en-IN")} s={{ color: "#856404" }} />
+                          <TD ch={"₹"+j.total.toLocaleString("en-IN")} s={{ fontWeight: 700, color: "#5a3e00" }} />
+                        </tr>
+                      ))}
+                      <tr style={{ background: "#fff3cd", fontWeight: 700 }}>
+                        <td colSpan={3} style={{ padding: "4px 6px", fontSize: 11, color: "#856404" }}>TOTAL JAMMA</td>
+                        <TD ch={"₹"+totalJamma.toLocaleString("en-IN")} s={{ color: "#856404" }} /><TD ch="" />
+                        <TD ch={"₹"+totalJammaInt.toLocaleString("en-IN")} s={{ color: "#856404" }} />
+                        <TD ch={"₹"+totalJammaWithInt.toLocaleString("en-IN")} s={{ color: "#5a3e00" }} />
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          }
+
+          // Carry-forward mode — each hop gets its own Part table
+          const jamChains = [];
+          const jamUsed = new Set();
+          jammaCalc.forEach((j, i) => {
+            if (jamUsed.has(i)) return;
+            if (j.carryForwardFrom !== undefined && j.carryForwardFrom !== null && j.carryForwardFrom !== "") return;
+            const chain = [{ ...j, _idx: i }];
+            jamUsed.add(i);
+            let currentCfId = j.cfId;
+            while (currentCfId) {
+              let nextFound = false;
+              jammaCalc.forEach((k, m) => {
+                if (!jamUsed.has(m) && k.carryForwardFrom === currentCfId) {
+                  chain.push({ ...k, _idx: m });
+                  jamUsed.add(m);
+                  currentCfId = k.cfId;
+                  nextFound = true;
+                }
+              });
+              if (!nextFound) break;
+            }
+            jamChains.push(chain);
+          });
+          jammaCalc.forEach((j, i) => {
+            if (!jamUsed.has(i)) { jamChains.push([{ ...j, _idx: i }]); jamUsed.add(i); }
+          });
+          const jamParts = [];
+          jamChains.forEach(chain => { chain.forEach(j => jamParts.push(j)); });
+
+          return jamParts.map((j, pi) => (
+            <div key={pi} style={{ marginBottom: 12 }}>
+              <div style={{ fontWeight: 700, color: "#856404", marginBottom: 5, fontSize: 12, display:"flex", alignItems:"center", gap:8 }}>
+                JAMMA DETAILS | జమ్మా వివరాలు
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", background:"#856404", padding:"1px 10px", borderRadius:10 }}>Part {pi + 1}</span>
+              </div>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 440 }}>
+                  <thead><tr style={{ background: "#856404", color: "#fff" }}><TH ch="S.No" /><TH ch="Date" /><TH ch="Note" /><TH ch="Amount(₹)" /><TH ch="Days" /><TH ch="Interest(₹)" /><TH ch="Total(₹)" /></tr></thead>
+                  <tbody>
+                    <tr style={{ background: "#fffdf0", borderBottom: "1px solid #ffeeba" }}>
+                      <TD ch={1} />
                       <TD ch={j.date ? fmtDate(j.date) : "—"} />
                       <TD ch={j.note || "—"} />
                       <TD ch={"₹"+(parseFloat(j.amount) || 0).toLocaleString("en-IN")} s={{ color: "#856404", fontWeight: 600 }} />
@@ -376,18 +466,18 @@ function BillPreview({ farmer, varietySettings, getVarietyBillDate, isVarietyPai
                       <TD ch={"₹"+j.interest.toLocaleString("en-IN")} s={{ color: "#856404" }} />
                       <TD ch={"₹"+j.total.toLocaleString("en-IN")} s={{ fontWeight: 700, color: "#5a3e00" }} />
                     </tr>
-                  ))}
-                  <tr style={{ background: "#fff3cd", fontWeight: 700 }}>
-                    <td colSpan={3} style={{ padding: "4px 6px", fontSize: 11, color: "#856404" }}>TOTAL JAMMA</td>
-                    <TD ch={"₹"+totalJamma.toLocaleString("en-IN")} s={{ color: "#856404" }} /><TD ch="" />
-                    <TD ch={"₹"+totalJammaInt.toLocaleString("en-IN")} s={{ color: "#856404" }} />
-                    <TD ch={"₹"+totalJammaWithInt.toLocaleString("en-IN")} s={{ color: "#5a3e00" }} />
-                  </tr>
-                </tbody>
-              </table>
+                    <tr style={{ background: "#fff3cd", fontWeight: 700 }}>
+                      <td colSpan={3} style={{ padding: "4px 6px", fontSize: 11, color: "#856404" }}>TOTAL</td>
+                      <TD ch={"₹"+(parseFloat(j.amount) || 0).toLocaleString("en-IN")} s={{ color: "#856404" }} /><TD ch="" />
+                      <TD ch={"₹"+j.interest.toLocaleString("en-IN")} s={{ color: "#856404" }} />
+                      <TD ch={"₹"+j.total.toLocaleString("en-IN")} s={{ color: "#5a3e00" }} />
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
-        )}
+          ));
+        })()}
 
         {/* Settlement */}
         <div style={{ background: balance >= 0 ? "#e8f5e9" : "#fdecea", borderRadius: 6, padding: "12px 16px", border: "2px solid "+(balance >= 0 ? "#2d6a2d" : "#e74c3c") }}>
@@ -1187,6 +1277,23 @@ function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVar
                         + Set custom interest end date
                       </button>
                     )}
+                    {/* Carry Forward button — only when tillDate is set */}
+                    {jamTillDate && (() => {
+                      const carryAmt = amt + interest;
+                      const alreadyCarried = (farmer.jammaEntries||[]).some(x => x.carryForwardFrom === (j.cfId||`jcf_${i}`));
+                      if (alreadyCarried) return <span style={{fontSize:10,color:"#856404",padding:"2px 8px"}}>✓ Carried forward</span>;
+                      return (
+                        <button onClick={()=>{
+                          const cfId = j.cfId || `jcf_${Date.now()}`;
+                          const updatedJamma = [...(farmer.jammaEntries||[])];
+                          if (!updatedJamma[i].cfId) updatedJamma[i] = {...updatedJamma[i], cfId};
+                          const newJam = { date: jamTillDate, amount: carryAmt, interestRate: j.interestRate, note: `Carried from ${fmtDate(j.date||BILL_DATE)}`, carryForwardFrom: cfId };
+                          onChange({...farmer, jammaEntries:[...updatedJamma, newJam]});
+                        }} style={{fontSize:10,padding:"2px 10px",borderRadius:4,border:"1px solid #856404",background:"#fff3cd",color:"#856404",cursor:"pointer",fontWeight:600}}>
+                          ↪ Carry Forward (₹{carryAmt.toLocaleString("en-IN")})
+                        </button>
+                      );
+                    })()}
                   </div>
                   <div style={{fontSize:11,padding:"2px 8px",background:"#fff3cd",borderRadius:4,color:"#856404"}}>
                     ₹{amt.toLocaleString("en-IN")} × {rate}% × {days} days = Interest: ₹{interest.toLocaleString("en-IN")} | <strong>Total: ₹{(amt+interest).toLocaleString("en-IN")}</strong>
