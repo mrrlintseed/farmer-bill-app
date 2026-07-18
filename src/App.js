@@ -132,12 +132,10 @@ function BillPreview({ farmer, varietySettings, getVarietyBillDate, isVarietyPai
     return { ...a, days, interest, total: a.amount + interest };
   });
   // For settlement summary — only count the LAST entry of each carry-forward chain
-  // Identify carry-forward entries by note starting with "Carried from"
-  const isCarryEntry = (a) => (a.note||"").startsWith("Carried from");
-  // An advance is intermediate if another carry-forward entry has the same amount as this advance's total
+  // An advance is intermediate if a later entry was explicitly carried forward from it (linked via cfId)
   const isIntermediate = (a) => {
-    const myTotal = Math.round(a.total);
-    return advCalc.some(b => isCarryEntry(b) && Math.round(b.amount) === myTotal);
+    if (!a.cfId) return false;
+    return advCalc.some(b => b.carryForwardFrom === a.cfId);
   };
   const finalAdvances = advCalc.filter(a => !isIntermediate(a));
   const totalAdv = finalAdvances.reduce((s, a) => s + a.amount, 0);
@@ -916,7 +914,7 @@ function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVar
               )}
               {/* Carry Forward button — only when tillDate is set */}
               {a.tillDate && (() => {
-                const {interest} = calcInterest(parseFloat(a.amount)||0, parseFloat(a.interestRate)||0, a.date, a.tillDate);
+                const {interest} = (a.compound?calcCompoundInterest:calcInterest)(parseFloat(a.amount)||0, parseFloat(a.interestRate)||0, a.date, a.tillDate);
                 const carryAmt = (parseFloat(a.amount)||0) + interest;
                 // Only show if no carry-forward already exists from this advance
                 const alreadyCarried = (farmer.advances||[]).some(x => x.carryForwardFrom === (a.cfId||`cf_${i}`));
