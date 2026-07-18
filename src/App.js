@@ -3231,8 +3231,6 @@ export default function App() {
                                   + "<td style=\"padding:5px 8px;border:1px solid #ddd;text-align:center\">" + (ip ? parseFloat(g.packets) || 0 : "—") + "</td>"
                                   + "<td style=\"padding:5px 8px;border:1px solid #ddd;text-align:center;font-weight:700;color:" + (ip ? "#155724" : "#721c24") + "\">" + (ip ? "✓P" : "✗F") + "</td>"
                                   + "<td style=\"padding:5px 8px;border:1px solid #ddd;text-align:center\">" + vpT + "</td>"
-                                  + "<td style=\"padding:5px 8px;border:1px solid #ddd;text-align:right\">₹" + vpR.toLocaleString("en-IN") + "</td>"
-                                  + "<td style=\"padding:5px 8px;border:1px solid #ddd;text-align:right;font-weight:600;color:#1a6a1a\">" + (ip ? "₹" + amt.toLocaleString("en-IN") : "—") + "</td>"
                                   + "<td style=\"padding:5px 8px;border:1px solid #ddd;font-size:11px;color:#856404\">" + (g.note || "") + "</td></tr>";
                               });
 
@@ -3241,9 +3239,9 @@ export default function App() {
                                 + "<title>Growers (Telugu) — " + (so.name || "Sub-Organizer") + "</title>"
                                 + "<style>body{font-family:\"Noto Serif Telugu\",Georgia,serif;padding:20px;}h2{color:#1a2a4a;}table{border-collapse:collapse;width:100%;font-size:12px;}th{background:#1a2a4a;color:#fff;padding:6px 8px;border:1px solid #ddd;}.total-row td{font-weight:800;background:#e8f0ff;border-top:2px solid #1a2a4a;}@media print{@page{margin:8mm;size:A4 landscape;}}</style></head>"
                                 + "<body><h2>Growers — " + (so.name || "Sub-Organizer") + " (#" + (so.accNo || "") + ")</h2>"
-                                + "<table><thead><tr><th>S.No</th><th>LOT No</th><th>Grower</th><th>Father</th><th>Village</th><th>Variety</th><th>Packets</th><th>Result</th><th>Type</th><th>Rate</th><th>Amount</th><th>Note</th></tr></thead>"
+                                + "<table><thead><tr><th>S.No</th><th>LOT No</th><th>Grower</th><th>Father</th><th>Village</th><th>Variety</th><th>Packets</th><th>Result</th><th>Type</th><th>Note</th></tr></thead>"
                                 + "<tbody>" + rowsHtml
-                                + "<tr class=\"total-row\"><td colspan=\"6\">TOTAL</td><td style=\"text-align:center;padding:6px 8px;border:1px solid #ddd\">" + totalPkts.toLocaleString("en-IN") + "</td><td colspan=\"3\"></td><td style=\"text-align:right;padding:6px 8px;border:1px solid #ddd\">₹" + Math.round(totalAmt).toLocaleString("en-IN") + "</td><td></td></tr>"
+                                + "<tr class=\"total-row\"><td colspan=\"6\">TOTAL</td><td style=\"text-align:center;padding:6px 8px;border:1px solid #ddd\">" + totalPkts.toLocaleString("en-IN") + "</td><td colspan=\"3\"></td></tr>"
                                 + "</tbody></table></body></html>";
 
                               if (printWindow.closed) throw new Error("The print window was closed before printing.");
@@ -3290,8 +3288,6 @@ export default function App() {
                               +"<td style=\"padding:5px 8px;border:1px solid #ddd;text-align:center\">"+(ip?parseFloat(g.packets)||0:"—")+"</td>"
                               +"<td style=\"padding:5px 8px;border:1px solid #ddd;text-align:center;font-weight:700;color:"+(ip?"#155724":"#721c24")+"\">"+(ip?"✓P":"✗F")+"</td>"
                               +"<td style=\"padding:5px 8px;border:1px solid #ddd;text-align:center\">"+vpT+"</td>"
-                              +"<td style=\"padding:5px 8px;border:1px solid #ddd;text-align:right\">₹"+vpR.toLocaleString("en-IN")+"</td>"
-                              +"<td style=\"padding:5px 8px;border:1px solid #ddd;text-align:right;font-weight:600;color:#1a6a1a\">"+(ip?"₹"+amt.toLocaleString("en-IN"):"—")+"</td>"
                               +"<td style=\"padding:5px 8px;border:1px solid #ddd;font-size:11px;color:#856404\">"+(g.note||"")+"</td></tr>";
                           });
                           const html="<!DOCTYPE html><html><head><meta charset=\"UTF-8\"/>"
@@ -3299,9 +3295,9 @@ export default function App() {
                             +"<style>body{font-family:Georgia,serif;padding:20px;}h2{color:#1a2a4a;}table{border-collapse:collapse;width:100%;font-size:12px;}th{background:#1a2a4a;color:#fff;padding:6px 8px;border:1px solid #ddd;}.total-row td{font-weight:800;background:#e8f0ff;border-top:2px solid #1a2a4a;}@media print{@page{margin:8mm;size:A4 landscape;}}</style></head>"
                             +"<body><h2>Growers — "+so.name+" (#"+so.accNo+")</h2>"
                             +"<div style=\"font-size:13px;color:#555;margin-bottom:8px\">Village: "+(so.village||"—")+" | Total: "+growers.length+" growers</div>"
-                            +"<table><thead><tr><th>S.No</th><th>LOT No</th><th>Grower</th><th>Father</th><th>Village</th><th>Variety</th><th>Packets</th><th>Result</th><th>Type</th><th>Rate</th><th>Amount</th><th>Note</th></tr></thead>"
+                            +"<table><thead><tr><th>S.No</th><th>LOT No</th><th>Grower</th><th>Father</th><th>Village</th><th>Variety</th><th>Packets</th><th>Result</th><th>Type</th><th>Note</th></tr></thead>"
                             +"<tbody>"+rowsHtml
-                            +"<tr class=\"total-row\"><td colspan=\"6\">TOTAL</td><td style=\"text-align:center;padding:6px 8px;border:1px solid #ddd\">"+totalPkts.toLocaleString("en-IN")+"</td><td colspan=\"3\"></td><td style=\"text-align:right;padding:6px 8px;border:1px solid #ddd\">₹"+Math.round(totalAmt).toLocaleString("en-IN")+"</td><td></td></tr>"
+                            +"<tr class=\"total-row\"><td colspan=\"6\">TOTAL</td><td style=\"text-align:center;padding:6px 8px;border:1px solid #ddd\">"+totalPkts.toLocaleString("en-IN")+"</td><td colspan=\"3\"></td></tr>"
                             +"</tbody></table></body></html>";
                           const w=window.open("","_blank");w.document.write(html);w.document.close();setTimeout(()=>w.print(),400);
                         }} style={{background:"#1a2a4a",color:"#fff",border:"none",borderRadius:5,padding:"5px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>🖨️ Print Growers</button>
