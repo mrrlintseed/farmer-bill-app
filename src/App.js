@@ -255,36 +255,36 @@ function BillPreview({ farmer, varietySettings, getVarietyBillDate, isVarietyPai
             if (!used.has(i)) { chains.push([{ ...a, _idx: i }]); used.add(i); }
           });
 
-          return chains.map((chain, ci) => {
-            const chainAdv = chain.reduce((s, a) => s + a.amount, 0);
-            const chainInt = chain.reduce((s, a) => s + a.interest, 0);
-            const chainTotal = chain[chain.length - 1].total;
+          // Flatten: every hop in a carry-forward chain gets its own Part table
+          // (Part 1 = original advance, Part 2 = first carry-forward, etc.)
+          const parts = [];
+          chains.forEach(chain => { chain.forEach(a => parts.push(a)); });
+
+          return parts.map((a, pi) => {
             return (
-              <div key={ci} style={{ marginBottom: 14 }}>
+              <div key={pi} style={{ marginBottom: 14 }}>
                 <div style={{ fontWeight: 700, color: "#1a4a1a", marginBottom: 5, fontSize: 12, display:"flex", alignItems:"center", gap:8 }}>
                   ADVANCE DETAILS | అడ్వాన్స్ వివరాలు
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", background:"#2d6a2d", padding:"1px 10px", borderRadius:10 }}>Part {ci + 1}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", background:"#2d6a2d", padding:"1px 10px", borderRadius:10 }}>Part {pi + 1}</span>
                 </div>
                 <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 480 }}>
                     <thead><tr style={{ background: "#2d6a2d", color: "#fff" }}><TH ch="S.No" /><TH ch="Date" /><TH ch="Note" /><TH ch="Amount(₹)" /><TH ch="Days" /><TH ch="Interest(₹)" /><TH ch="Total(₹)" /></tr></thead>
                     <tbody>
-                      {chain.map((a, i) => (
-                        <tr key={i} style={{ background: i % 2 === 0 ? "#f9fdf9" : "#fff", borderBottom: "1px solid #d4e8d4" }}>
-                          <TD ch={i + 1} />
-                          <TD ch={fmtDate(a.date)} />
-                          <TD ch={a.note || "—"} />
-                          <TD ch={"₹"+a.amount.toLocaleString("en-IN")} />
-                          <TD ch={a.days} />
-                          <TD ch={"₹"+a.interest.toLocaleString("en-IN")} s={{ color: "#c0392b" }} />
-                          <TD ch={"₹"+a.total.toLocaleString("en-IN")} s={{ fontWeight: 600 }} />
-                        </tr>
-                      ))}
+                      <tr style={{ background: "#f9fdf9", borderBottom: "1px solid #d4e8d4" }}>
+                        <TD ch={1} />
+                        <TD ch={fmtDate(a.date)} />
+                        <TD ch={a.note || "—"} />
+                        <TD ch={"₹"+a.amount.toLocaleString("en-IN")} />
+                        <TD ch={a.days} />
+                        <TD ch={"₹"+a.interest.toLocaleString("en-IN")} s={{ color: "#c0392b" }} />
+                        <TD ch={"₹"+a.total.toLocaleString("en-IN")} s={{ fontWeight: 600 }} />
+                      </tr>
                       <tr style={{ background: "#e8f5e9", fontWeight: 700 }}>
                         <td colSpan={3} style={{ padding: "4px 6px", fontSize: 11, color: "#1a4a1a" }}>TOTAL</td>
-                        <TD ch={"₹"+chainAdv.toLocaleString("en-IN")} /><TD ch="" />
-                        <TD ch={"₹"+chainInt.toLocaleString("en-IN")} s={{ color: "#c0392b" }} />
-                        <TD ch={"₹"+chainTotal.toLocaleString("en-IN")} />
+                        <TD ch={"₹"+a.amount.toLocaleString("en-IN")} /><TD ch="" />
+                        <TD ch={"₹"+a.interest.toLocaleString("en-IN")} s={{ color: "#c0392b" }} />
+                        <TD ch={"₹"+a.total.toLocaleString("en-IN")} />
                       </tr>
                     </tbody>
                   </table>
@@ -293,6 +293,7 @@ function BillPreview({ farmer, varietySettings, getVarietyBillDate, isVarietyPai
             );
           });
         })()}
+
 
         {/* Crops */}
         {cropsCalc.length > 0 && (
