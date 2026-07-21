@@ -1370,6 +1370,7 @@ export default function App() {
   const daysSinceBackup = lastBackupDate ? Math.floor((new Date()-new Date(lastBackupDate))/86400000) : 999;
   const [subOrgs, setSubOrgs] = useState([]);
   const [mode, setMode] = useState("farmers");
+  const [dashboardDrill, setDashboardDrill] = useState(null); // { title, icon, color, rows: [{label, value, sub}] }
   const [selectedVillage, setSelectedVillage] = useState(null);
   const [villageSearch, setVillageSearch] = useState("");
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -3955,7 +3956,6 @@ export default function App() {
         const vMap={};
         fStats.forEach(f=>{const v=f.village?.trim()||"No Village";if(!vMap[v])vMap[v]={farmers:0,payable:0,due:0,cropVal:0};vMap[v].farmers++;if(f.balance>=0)vMap[v].payable+=f.balance;else vMap[v].due+=Math.abs(f.balance);vMap[v].cropVal+=f.cropVal;});
         const villages=Object.entries(vMap).sort((a,b)=>b[1].cropVal-a[1].cropVal);
-        const maxVC=Math.max(...villages.map(([,v])=>v.cropVal),1);
         const soStats=subOrgs.map(so=>{
           const advWI=(so.advances||[]).reduce((s,a)=>{const{interest}=(a.compound?calcCompoundInterest:calcInterest)(parseFloat(a.amount)||0,parseFloat(a.interestRate)||0,a.date);return s+(parseFloat(a.amount)||0)+interest;},0);
           const g=so.growers||[];
@@ -3965,112 +3965,129 @@ export default function App() {
           return{...so,balance:seedAmt-advWI-found-trans,seedAmt,growerCount:g.length,passCount:g.filter(gr=>gr.result==="Pass").length};
         });
         const fmt=n=>"₹"+Math.abs(n).toLocaleString("en-IN");
-        const Card=({icon,label,value,sub,color})=>(
-          <div style={{background:"#fff",borderRadius:10,padding:"14px 18px",border:"2px solid "+color+"20",boxShadow:"0 2px 8px rgba(0,0,0,0.06)",flex:"1 1 160px",minWidth:150}}>
-            <div style={{fontSize:22,marginBottom:4}}>{icon}</div>
-            <div style={{fontSize:11,color:"#777",marginBottom:2}}>{label}</div>
-            <div style={{fontSize:20,fontWeight:800,color}}>{value}</div>
-            {sub&&<div style={{fontSize:10,color:"#999",marginTop:2}}>{sub}</div>}
-          </div>
-        );
-        const Bar=({data,color,maxV,vf})=>(
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            {data.map(([k,v],i)=>(
-              <div key={i}>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}>
-                  <span style={{color:"#444",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"60%"}}>{k}</span>
-                  <span style={{fontWeight:600,color}}>{vf(v)}</span>
-                </div>
-                <div style={{background:"#f0f0f0",borderRadius:4,height:10,overflow:"hidden"}}>
-                  <div style={{width:((v/maxV)*100)+"%",height:"100%",background:color,borderRadius:4}} />
-                </div>
-              </div>
-            ))}
-          </div>
-        );
-        const Donut=({segs,size=120})=>{
-          const total=segs.reduce((s,g)=>s+g.value,0);
-          if(!total) return <div style={{width:size,height:size,borderRadius:"50%",background:"#eee",margin:"0 auto"}} />;
-          let cum=0;
-          const r=40,cx=60,cy=60,sw=20,circ=2*Math.PI*r;
+        const goToFarmer=(farmerObj)=>{
+          const idx=allF.findIndex(f=>f===farmerObj || (f.id&&f.id===farmerObj.id));
+          if(idx<0) return;
+          setDashboardDrill(null);setMode("farmers");setSelectedIdx(idx);setTab("form");
+        };
+        const goToSubOrg=(idx)=>{
+          setDashboardDrill(null);setMode("suborgs");setSelectedSubOrgIdx(idx);setSubOrgTab("form");
+        };
+        const openDrill=(title,icon,color,rows,emptyMsg)=>setDashboardDrill({title,icon,color,rows,emptyMsg});
+        const openPayableDrill=()=>openDrill("Farmers to be Paid","💰","#1a6a1a",
+          fStats.filter(f=>f.balance>0).sort((a,b)=>b.balance-a.balance).map(f=>({label:"#"+(f.farmerNo||"?")+" "+(f.name||""),sub:f.village||"—",value:fmt(f.balance),onClick:()=>goToFarmer(f)})),
+          "No farmers with a pending payable balance");
+        const openDueDrill=()=>openDrill("Farmers Owing a Balance","📥","#c0392b",
+          fStats.filter(f=>f.balance<0).sort((a,b)=>a.balance-b.balance).map(f=>({label:"#"+(f.farmerNo||"?")+" "+(f.name||""),sub:f.village||"—",value:fmt(f.balance),onClick:()=>goToFarmer(f)})),
+          "No farmers currently owe a balance");
+        const openCropValDrill=()=>openDrill("Crop Value by Farmer","🌾","#856404",
+          fStats.filter(f=>f.cropVal>0).sort((a,b)=>b.cropVal-a.cropVal).map(f=>({label:"#"+(f.farmerNo||"?")+" "+(f.name||""),sub:(f.crops||[]).filter(c=>c.result==="Pass").map(c=>c.variety).filter(Boolean).join(", ")||"—",value:fmt(f.cropVal),onClick:()=>goToFarmer(f)})),
+          "No passed crop value recorded yet");
+        const openAdvancesDrill=()=>openDrill("Advances + Interest by Farmer","💸","#2d5a8a",
+          fStats.filter(f=>f.advWI>0).sort((a,b)=>b.advWI-a.advWI).map(f=>({label:"#"+(f.farmerNo||"?")+" "+(f.name||""),sub:f.village||"—",value:fmt(f.advWI),onClick:()=>goToFarmer(f)})),
+          "No outstanding advances recorded");
+        const openPassFailDrill=(result)=>{
+          const rows=[];
+          allF.forEach(f=>(f.crops||[]).forEach(c=>{if(c.result===result)rows.push({label:"#"+(f.farmerNo||"?")+" "+(f.name||""),sub:c.variety||"—",value:(parseFloat(c.quantity)||0).toLocaleString("en-IN")+" pkts",onClick:()=>goToFarmer(f)});}));
+          openDrill((result==="Pass"?"✓ Passed":"✗ Failed")+" Crops",result==="Pass"?"✅":"❌",result==="Pass"?"#2d6a2d":"#e74c3c",rows,"No crops found");
+        };
+        const totalQty=allCrops.filter(c=>c.result==="Pass").reduce((s,c)=>s+(parseFloat(c.quantity)||0),0);
+        const openQuantityDrill=()=>{
+          const rows=allF.map(f=>{const q=(f.crops||[]).filter(c=>c.result==="Pass").reduce((s,c)=>s+(parseFloat(c.quantity)||0),0);return{f,q};}).filter(r=>r.q>0).sort((a,b)=>b.q-a.q);
+          openDrill("Quantity by Farmer","📦","#6b4fa0",
+            rows.map(({f,q})=>({label:"#"+(f.farmerNo||"?")+" "+(f.name||""),sub:f.village||"—",value:q.toLocaleString("en-IN")+" pkts",onClick:()=>goToFarmer(f)})),
+            "No passed quantity recorded yet");
+        };
+        const varietyMap={};
+        allF.forEach(f=>(f.crops||[]).forEach(c=>{if(!c.variety)return;if(!varietyMap[c.variety])varietyMap[c.variety]={qty:0,farmers:new Set()};if(c.result==="Pass"){varietyMap[c.variety].qty+=parseFloat(c.quantity)||0;varietyMap[c.variety].farmers.add(f);}}));
+        const varietyList=Object.entries(varietyMap).sort((a,b)=>b[1].qty-a[1].qty);
+        const openVarietyFarmersDrill=(variety)=>{
+          const rows=allF.map(f=>{const q=(f.crops||[]).filter(c=>c.variety===variety&&c.result==="Pass").reduce((s,c)=>s+(parseFloat(c.quantity)||0),0);return{f,q};}).filter(r=>r.q>0).sort((a,b)=>b.q-a.q);
+          openDrill(variety+" — Farmers","🌱","#0e7c6b",
+            rows.map(({f,q})=>({label:"#"+(f.farmerNo||"?")+" "+(f.name||""),sub:f.village||"—",value:q.toLocaleString("en-IN")+" pkts",onClick:()=>goToFarmer(f)})),
+            "No farmers growing this variety");
+        };
+        const openVarietiesDrill=()=>openDrill("Variety-wise Quantity","🌱","#0e7c6b",
+          varietyList.map(([v,d])=>({label:v,sub:d.farmers.size+" farmers",value:d.qty.toLocaleString("en-IN")+" pkts",onClick:()=>openVarietyFarmersDrill(v)})),
+          "No varieties recorded yet");
+        const openVillageFarmersDrill=(vname)=>openDrill(vname+" — Farmers","📍","#b06a1a",
+          fStats.filter(f=>(f.village?.trim()||"No Village")===vname).sort((a,b)=>b.balance-a.balance).map(f=>({label:"#"+(f.farmerNo||"?")+" "+(f.name||""),sub:f.balance>=0?"Payable":"Due",value:fmt(f.balance),onClick:()=>goToFarmer(f)})),
+          "No farmers in this village");
+        const openVillagesDrill=()=>openDrill("Village-wise Quantity","📍","#b06a1a",
+          villages.map(([v,d])=>({label:v,sub:d.farmers+" farmers · "+fmt(d.cropVal)+" crop value",value:(fStats.filter(f=>(f.village?.trim()||"No Village")===v).reduce((s,f)=>s+(f.crops||[]).filter(c=>c.result==="Pass").reduce((ss,c)=>ss+(parseFloat(c.quantity)||0),0),0)).toLocaleString("en-IN")+" pkts",onClick:()=>openVillageFarmersDrill(v)})),
+          "No village data");
+        const openSubOrgsDrill=()=>openDrill("Sub-Organizer Summary","🏢","#2d5a8a",
+          soStats.map((so,i)=>({label:"#"+(so.accNo||"—")+" "+(so.name||"Sub-Org"),sub:(so.village||"—")+" · "+so.growerCount+" growers ("+so.passCount+" passed)",value:(so.balance>=0?"Pay ":"Due ")+fmt(so.balance),onClick:()=>goToSubOrg(i)})),
+          "No sub-organizers added yet");
+        const Card=({icon,label,value,sub,color,onClick})=>{
+          const [hover,setHover]=useState(false);
           return (
-            <svg width={size} height={size} viewBox="0 0 120 120">
-              {segs.map((seg,i)=>{
-                const pct=seg.value/total,dash=pct*circ,off=circ-(cum/total)*circ;
-                cum+=seg.value;
-                return <circle key={i} cx={cx} cy={cy} r={r} fill="none" stroke={seg.color} strokeWidth={sw} strokeDasharray={dash+" "+(circ-dash)} strokeDashoffset={off} style={{transform:"rotate(-90deg)",transformOrigin:"60px 60px"}} />;
-              })}
-              <text x={cx} y={cy-6} textAnchor="middle" style={{fontSize:11,fill:"#333",fontWeight:700}}>{total}</text>
-              <text x={cx} y={cy+8} textAnchor="middle" style={{fontSize:9,fill:"#777"}}>Total</text>
-            </svg>
+            <div onClick={onClick} onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}
+              style={{background:"#fff",borderRadius:10,padding:"14px 18px",borderLeft:"4px solid "+color,border:"1px solid "+(hover?color+"80":"#eee"),borderLeftWidth:4,borderLeftColor:color,
+                boxShadow:hover?"0 6px 16px rgba(0,0,0,0.12)":"0 2px 8px rgba(0,0,0,0.06)",transform:hover?"translateY(-2px)":"translateY(0)",transition:"all 0.15s ease",
+                flex:"1 1 160px",minWidth:150,cursor:onClick?"pointer":"default"}}>
+              <div style={{fontSize:22,marginBottom:4}}>{icon}</div>
+              <div style={{fontSize:11,color:"#777",marginBottom:2}}>{label}</div>
+              <div style={{fontSize:20,fontWeight:800,color}}>{value}</div>
+              {sub&&<div style={{fontSize:10,color:"#999",marginTop:2}}>{sub}</div>}
+              {onClick&&<div style={{fontSize:10,color,marginTop:6,fontWeight:600,opacity:hover?1:0.6}}>View details →</div>}
+            </div>
           );
         };
         return (
           <div style={{padding:"16px 20px",overflowY:"auto",height:"calc(100vh - 58px)",background:"#f0f7f0"}}>
             <div style={{fontWeight:800,fontSize:18,color:"#1a4a1a",marginBottom:4}}>📊 Dashboard Overview</div>
             <div style={{fontSize:12,color:"#666",marginBottom:16}}>Bill Date: 01 July 2026 · {allF.length} farmers · {subOrgs.length} sub-organizers</div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:12,marginBottom:20}}>
-              <Card icon="💰" label="Total Payable to Farmers" value={fmt(totalPayable)} sub={fStats.filter(f=>f.balance>0).length+" farmers"} color="#1a6a1a" />
-              <Card icon="📥" label="Total Due from Farmers" value={fmt(totalDue)} sub={fStats.filter(f=>f.balance<0).length+" farmers"} color="#c0392b" />
-              <Card icon="🌾" label="Total Crop Value" value={fmt(totalCropVal)} sub={passC+" crops passed"} color="#856404" />
-              <Card icon="💸" label="Total Advances+Interest" value={fmt(totalAdvances)} sub={"Across "+allF.length+" farmers"} color="#2d5a8a" />
+            <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
+              <Card icon="💰" label="Total Payable to Farmers" value={fmt(totalPayable)} sub={fStats.filter(f=>f.balance>0).length+" farmers"} color="#1a6a1a" onClick={openPayableDrill} />
+              <Card icon="📥" label="Total Due from Farmers" value={fmt(totalDue)} sub={fStats.filter(f=>f.balance<0).length+" farmers"} color="#c0392b" onClick={openDueDrill} />
+              <Card icon="🌾" label="Total Crop Value" value={fmt(totalCropVal)} sub={passC+" crops passed"} color="#856404" onClick={openCropValDrill} />
+              <Card icon="💸" label="Total Advances+Interest" value={fmt(totalAdvances)} sub={"Across "+allF.length+" farmers"} color="#2d5a8a" onClick={openAdvancesDrill} />
+              <Card icon="📦" label="Total Quantity" value={totalQty.toLocaleString("en-IN")+" pkts"} sub={passC+" passed crops"} color="#6b4fa0" onClick={openQuantityDrill} />
+              <Card icon="🌱" label="Varieties" value={varietyList.length+" varieties"} sub="Tap for quantity by variety" color="#0e7c6b" onClick={openVarietiesDrill} />
+              <Card icon="📍" label="Villages" value={villages.length+" villages"} sub="Tap for quantity by village" color="#b06a1a" onClick={openVillagesDrill} />
+              <Card icon="✅" label="Passed Crops" value={passC+" crops"} sub={allCrops.length>0?Math.round(passC/allCrops.length*100)+"% of all crops":"—"} color="#2d6a2d" onClick={()=>openPassFailDrill("Pass")} />
+              <Card icon="❌" label="Failed Crops" value={failC+" crops"} sub={allCrops.length>0?Math.round(failC/allCrops.length*100)+"% of all crops":"—"} color="#e74c3c" onClick={()=>openPassFailDrill("Fail")} />
+              <Card icon="🏢" label="Sub-Organizers" value={soStats.length+" sub-orgs"} sub={soStats.reduce((s,so)=>s+so.growerCount,0)+" growers"} color="#2d5a8a" onClick={openSubOrgsDrill} />
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:16}}>
-              <div style={{background:"#fff",borderRadius:10,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
-                <div style={{fontWeight:700,fontSize:13,color:"#1a4a1a",marginBottom:12}}>💰 Balance Pending — Top Farmers</div>
-                {fStats.filter(f=>f.balance>0).length===0?<div style={{color:"#aaa",fontSize:12,textAlign:"center",padding:20}}>No pending balances</div>:
-                  <Bar data={fStats.filter(f=>f.balance>0).sort((a,b)=>b.balance-a.balance).slice(0,8).map(f=>["#"+(f.farmerNo||"?")+" "+f.name,f.balance])} color="#1a6a1a" maxV={Math.max(...fStats.filter(f=>f.balance>0).map(f=>f.balance),1)} vf={fmt} />
-                }
-              </div>
-              <div style={{background:"#fff",borderRadius:10,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
-                <div style={{fontWeight:700,fontSize:13,color:"#1a4a1a",marginBottom:12}}>📍 Village-wise Crop Value</div>
-                {villages.length===0?<div style={{color:"#aaa",fontSize:12,textAlign:"center",padding:20}}>No village data</div>:
-                  <Bar data={villages.map(([v,d])=>[v,d.cropVal])} color="#856404" maxV={maxVC} vf={fmt} />
-                }
-                {villages.length>0&&<div style={{marginTop:12,display:"flex",flexWrap:"wrap",gap:6}}>{villages.map(([v,d])=><div key={v} style={{background:"#f0f7f0",borderRadius:6,padding:"4px 10px",fontSize:11}}><strong>{v}</strong>: {d.farmers} farmers · <span style={{color:"#1a6a1a"}}>Pay {fmt(d.payable)}</span>{d.due>0&&<span style={{color:"#c0392b"}}> · Due {fmt(d.due)}</span>}</div>)}</div>}
-              </div>
-              <div style={{background:"#fff",borderRadius:10,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
-                <div style={{fontWeight:700,fontSize:13,color:"#1a4a1a",marginBottom:12}}>✅ Crop Pass / Fail Summary</div>
-                <div style={{display:"flex",alignItems:"center",gap:20}}>
-                  <Donut segs={[{value:passC,color:"#2d6a2d"},{value:failC,color:"#e74c3c"}]} size={120} />
-                  <div style={{flex:1}}>
-                    {[["✓ Passed",passC,"#1a4a1a","#2d6a2d"],["✗ Failed",failC,"#c0392b","#e74c3c"]].map(([l,n,tc,bc])=>(
-                      <div key={l} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                        <div style={{width:14,height:14,borderRadius:3,background:bc,flexShrink:0}} />
-                        <div><div style={{fontSize:12,fontWeight:600,color:tc}}>{l}: {n}</div><div style={{fontSize:11,color:"#777"}}>{allCrops.length>0?Math.round(n/allCrops.length*100):0}% of crops</div></div>
+
+            {/* ── DRILL-DOWN DRAWER ── */}
+            {dashboardDrill && (
+              <div onClick={()=>setDashboardDrill(null)} style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.35)",zIndex:1000,display:"flex",justifyContent:"flex-end"}}>
+                <div onClick={e=>e.stopPropagation()} style={{width:"min(420px, 92vw)",height:"100%",background:"#fff",boxShadow:"-4px 0 24px rgba(0,0,0,0.2)",display:"flex",flexDirection:"column"}}>
+                  <div style={{padding:"16px 18px",borderBottom:"1px solid #eee",display:"flex",alignItems:"center",justifyContent:"space-between",background:dashboardDrill.color+"12"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <span style={{fontSize:22}}>{dashboardDrill.icon}</span>
+                      <div>
+                        <div style={{fontWeight:800,fontSize:14,color:dashboardDrill.color}}>{dashboardDrill.title}</div>
+                        <div style={{fontSize:11,color:"#888"}}>{dashboardDrill.rows.length} {dashboardDrill.rows.length===1?"entry":"entries"}</div>
+                      </div>
+                    </div>
+                    <button onClick={()=>setDashboardDrill(null)} style={{background:"none",border:"none",fontSize:20,color:"#999",cursor:"pointer",lineHeight:1,padding:4}}>×</button>
+                  </div>
+                  <div style={{flex:1,overflowY:"auto",padding:"8px 10px"}}>
+                    {dashboardDrill.rows.length===0 ? (
+                      <div style={{color:"#aaa",fontSize:12,textAlign:"center",padding:30}}>{dashboardDrill.emptyMsg||"No data"}</div>
+                    ) : dashboardDrill.rows.map((r,i)=>(
+                      <div key={i} onClick={r.onClick||undefined}
+                        style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 10px",borderRadius:8,cursor:r.onClick?"pointer":"default",marginBottom:2}}
+                        onMouseEnter={e=>e.currentTarget.style.background="#f5f8f5"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                        <div style={{minWidth:0,flex:1}}>
+                          <div style={{fontSize:12.5,fontWeight:600,color:"#333",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.label}</div>
+                          {r.sub&&<div style={{fontSize:11,color:"#999",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.sub}</div>}
+                        </div>
+                        <div style={{fontWeight:700,fontSize:12.5,color:dashboardDrill.color,marginLeft:10,whiteSpace:"nowrap"}}>{r.value}</div>
+                        {r.onClick && <span style={{marginLeft:6,color:"#bbb",fontSize:13}}>›</span>}
                       </div>
                     ))}
-                    <div style={{marginTop:8,padding:"6px 10px",background:"#f0f7f0",borderRadius:6,fontSize:11}}>
-                      <div>KMS: {allCrops.filter(c=>(c.cropType||"KMS")==="KMS").length}</div>
-                      <div>GMS: {allCrops.filter(c=>c.cropType==="GMS").length}</div>
-                    </div>
                   </div>
                 </div>
               </div>
-              <div style={{background:"#fff",borderRadius:10,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
-                <div style={{fontWeight:700,fontSize:13,color:"#1a2a4a",marginBottom:12}}>🏢 Sub-Organizer Summary</div>
-                {soStats.length===0?<div style={{color:"#aaa",fontSize:12,textAlign:"center",padding:20}}>No sub-organizers added yet</div>:(
-                  <>
-                    <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:12}}>
-                      {[["#",soStats.length,"Sub-Orgs","#2d5a8a","#e8f0ff"],["👥",soStats.reduce((s,so)=>s+so.growerCount,0),"Growers","#1a6a1a","#e8f5e9"],["🌾",fmt(soStats.reduce((s,so)=>s+so.seedAmt,0)),"Seed Amt","#856404","#fff3cd"]].map(([ic,v,l,tc,bg])=>(
-                        <div key={l} style={{background:bg,borderRadius:8,padding:"8px 14px",fontSize:12,flex:1,textAlign:"center"}}><div style={{fontWeight:700,fontSize:15,color:tc}}>{ic} {v}</div><div style={{color:"#555"}}>{l}</div></div>
-                      ))}
-                    </div>
-                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                      {soStats.map((so,i)=>(
-                        <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",background:"#f5faff",borderRadius:8,border:"1px solid #d0e4f4"}}>
-                          <div><div style={{fontWeight:600,fontSize:12}}>#{so.accNo||"—"} {so.name||"Sub-Org"}</div><div style={{fontSize:10,color:"#7ab8e8"}}>📍 {so.village||"—"} · {so.growerCount} growers ({so.passCount} passed)</div></div>
-                          <div style={{textAlign:"right"}}><div style={{fontWeight:700,fontSize:13,color:so.balance>=0?"#1a6a1a":"#c0392b"}}>{so.balance>=0?"Pay ":"Due "}{fmt(so.balance)}</div><div style={{fontSize:10,color:"#999"}}>Seed: {fmt(so.seedAmt)}</div></div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
+            )}
           </div>
         );
       })()}
+
 
       {/* ── VARIETY PAY MODE ── */}
       {mode === "variety" && (
