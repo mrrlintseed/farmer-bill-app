@@ -3974,12 +3974,20 @@ export default function App() {
           setDashboardDrill(null);setMode("suborgs");setSelectedSubOrgIdx(idx);setSubOrgTab("form");
         };
         const openDrill=(title,icon,color,rows,emptyMsg)=>setDashboardDrill({title,icon,color,rows,emptyMsg});
+        const openGroupedDrill=(title,icon,color,groups,emptyMsg)=>setDashboardDrill({title,icon,color,groups,emptyMsg});
         const openPayableDrill=()=>openDrill("Farmers to be Paid","💰","#1a6a1a",
           fStats.filter(f=>f.balance>0).sort((a,b)=>b.balance-a.balance).map(f=>({label:"#"+(f.farmerNo||"?")+" "+(f.name||""),sub:f.village||"—",value:fmt(f.balance),onClick:()=>goToFarmer(f)})),
           "No farmers with a pending payable balance");
-        const openDueDrill=()=>openDrill("Farmers Owing a Balance","📥","#c0392b",
-          fStats.filter(f=>f.balance<0).sort((a,b)=>a.balance-b.balance).map(f=>({label:"#"+(f.farmerNo||"?")+" "+(f.name||""),sub:f.village||"—",value:fmt(f.balance),onClick:()=>goToFarmer(f)})),
-          "No farmers currently owe a balance");
+        const openDueDrill=()=>{
+          const due=fStats.filter(f=>f.balance<0);
+          const byVillage={};
+          due.forEach(f=>{const v=f.village?.trim()||"No Village";if(!byVillage[v])byVillage[v]={total:0,farmers:[]};byVillage[v].total+=Math.abs(f.balance);byVillage[v].farmers.push(f);});
+          const groups=Object.entries(byVillage).sort((a,b)=>b[1].total-a[1].total).map(([v,d])=>({
+            title:v+" · "+fmt(d.total)+" ("+d.farmers.length+" farmer"+(d.farmers.length===1?"":"s")+")",
+            rows:d.farmers.sort((a,b)=>a.balance-b.balance).map(f=>({label:"#"+(f.farmerNo||"?")+" "+(f.name||""),value:fmt(f.balance),onClick:()=>goToFarmer(f)}))
+          }));
+          openGroupedDrill("Farmers Owing a Balance","📥","#c0392b",groups,"No farmers currently owe a balance");
+        };
         const openCropValDrill=()=>openDrill("Crop Value by Farmer","🌾","#856404",
           fStats.filter(f=>f.cropVal>0).sort((a,b)=>b.cropVal-a.cropVal).map(f=>({label:"#"+(f.farmerNo||"?")+" "+(f.name||""),sub:(f.crops||[]).filter(c=>c.result==="Pass").map(c=>c.variety).filter(Boolean).join(", ")||"—",value:fmt(f.cropVal),onClick:()=>goToFarmer(f)})),
           "No passed crop value recorded yet");
@@ -3988,15 +3996,24 @@ export default function App() {
           "No outstanding advances recorded");
         const openPassFailDrill=(result)=>{
           const rows=[];
-          allF.forEach(f=>(f.crops||[]).forEach(c=>{if(c.result===result)rows.push({label:"#"+(f.farmerNo||"?")+" "+(f.name||""),sub:c.variety||"—",value:(parseFloat(c.quantity)||0).toLocaleString("en-IN")+" pkts",onClick:()=>goToFarmer(f)});}));
+          fStats.forEach(f=>(f.crops||[]).forEach(c=>{
+            if(c.result!==result)return;
+            rows.push({label:"#"+(f.farmerNo||"?")+" "+(f.name||""),sub:(c.variety||"—")+" · "+(f.village||"—"),value:(parseFloat(c.quantity)||0).toLocaleString("en-IN")+" pkts",value2:(f.balance>=0?"Pay ":"Due ")+fmt(f.balance),value2Color:f.balance>=0?"#1a6a1a":"#c0392b",onClick:()=>goToFarmer(f)});
+          }));
           openDrill((result==="Pass"?"✓ Passed":"✗ Failed")+" Crops",result==="Pass"?"✅":"❌",result==="Pass"?"#2d6a2d":"#e74c3c",rows,"No crops found");
         };
-        const totalQty=allCrops.filter(c=>c.result==="Pass").reduce((s,c)=>s+(parseFloat(c.quantity)||0),0);
+        const soQty=(subOrgs||[]).reduce((s,so)=>s+(so.growers||[]).filter(g=>g.result==="Pass").reduce((ss,g)=>ss+(parseFloat(g.packets)||0),0),0);
+        const directQty=allCrops.filter(c=>c.result==="Pass").reduce((s,c)=>s+(parseFloat(c.quantity)||0),0);
+        const totalQty=directQty+soQty;
         const openQuantityDrill=()=>{
-          const rows=allF.map(f=>{const q=(f.crops||[]).filter(c=>c.result==="Pass").reduce((s,c)=>s+(parseFloat(c.quantity)||0),0);return{f,q};}).filter(r=>r.q>0).sort((a,b)=>b.q-a.q);
-          openDrill("Quantity by Farmer","📦","#6b4fa0",
-            rows.map(({f,q})=>({label:"#"+(f.farmerNo||"?")+" "+(f.name||""),sub:f.village||"—",value:q.toLocaleString("en-IN")+" pkts",onClick:()=>goToFarmer(f)})),
-            "No passed quantity recorded yet");
+          const directRows=allF.map(f=>{const q=(f.crops||[]).filter(c=>c.result==="Pass").reduce((s,c)=>s+(parseFloat(c.quantity)||0),0);return{f,q};}).filter(r=>r.q>0).sort((a,b)=>b.q-a.q)
+            .map(({f,q})=>({label:"#"+(f.farmerNo||"?")+" "+(f.name||""),sub:f.village||"—",value:q.toLocaleString("en-IN")+" pkts",onClick:()=>goToFarmer(f)}));
+          const soRows=(subOrgs||[]).map((so,i)=>{const q=(so.growers||[]).filter(g=>g.result==="Pass").reduce((s,g)=>s+(parseFloat(g.packets)||0),0);return{so,i,q};}).filter(r=>r.q>0).sort((a,b)=>b.q-a.q)
+            .map(({so,i,q})=>({label:"#"+(so.accNo||"—")+" "+(so.name||"Sub-Org"),sub:so.village||"—",value:q.toLocaleString("en-IN")+" pkts",onClick:()=>goToSubOrg(i)}));
+          openGroupedDrill("Quantity by Farmer","📦","#6b4fa0",[
+            {title:"DIRECT FARMERS · "+directQty.toLocaleString("en-IN")+" pkts",rows:directRows},
+            {title:"SUB-ORG GROWERS · "+soQty.toLocaleString("en-IN")+" pkts",rows:soRows}
+          ],"No passed quantity recorded yet");
         };
         const varietyMap={};
         allF.forEach(f=>(f.crops||[]).forEach(c=>{if(!c.variety)return;if(!varietyMap[c.variety])varietyMap[c.variety]={qty:0,farmers:new Set()};if(c.result==="Pass"){varietyMap[c.variety].qty+=parseFloat(c.quantity)||0;varietyMap[c.variety].farmers.add(f);}}));
@@ -4043,7 +4060,7 @@ export default function App() {
               <Card icon="📥" label="Total Due from Farmers" value={fmt(totalDue)} sub={fStats.filter(f=>f.balance<0).length+" farmers"} color="#c0392b" onClick={openDueDrill} />
               <Card icon="🌾" label="Total Crop Value" value={fmt(totalCropVal)} sub={passC+" crops passed"} color="#856404" onClick={openCropValDrill} />
               <Card icon="💸" label="Total Advances+Interest" value={fmt(totalAdvances)} sub={"Across "+allF.length+" farmers"} color="#2d5a8a" onClick={openAdvancesDrill} />
-              <Card icon="📦" label="Total Quantity" value={totalQty.toLocaleString("en-IN")+" pkts"} sub={passC+" passed crops"} color="#6b4fa0" onClick={openQuantityDrill} />
+              <Card icon="📦" label="Total Quantity" value={totalQty.toLocaleString("en-IN")+" pkts"} sub={"Direct "+directQty.toLocaleString("en-IN")+" · Sub-Org "+soQty.toLocaleString("en-IN")} color="#6b4fa0" onClick={openQuantityDrill} />
               <Card icon="🌱" label="Varieties" value={varietyList.length+" varieties"} sub="Tap for quantity by variety" color="#0e7c6b" onClick={openVarietiesDrill} />
               <Card icon="📍" label="Villages" value={villages.length+" villages"} sub="Tap for quantity by village" color="#b06a1a" onClick={openVillagesDrill} />
               <Card icon="✅" label="Passed Crops" value={passC+" crops"} sub={allCrops.length>0?Math.round(passC/allCrops.length*100)+"% of all crops":"—"} color="#2d6a2d" onClick={()=>openPassFailDrill("Pass")} />
@@ -4052,7 +4069,26 @@ export default function App() {
             </div>
 
             {/* ── DRILL-DOWN DRAWER ── */}
-            {dashboardDrill && (
+            {dashboardDrill && (() => {
+              const totalEntries = dashboardDrill.groups
+                ? dashboardDrill.groups.reduce((s,g)=>s+g.rows.length,0)
+                : dashboardDrill.rows.length;
+              const RowItem = (r,i) => (
+                <div key={i} onClick={r.onClick||undefined}
+                  style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 10px",borderRadius:8,cursor:r.onClick?"pointer":"default",marginBottom:2}}
+                  onMouseEnter={e=>e.currentTarget.style.background="#f5f8f5"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <div style={{minWidth:0,flex:1}}>
+                    <div style={{fontSize:12.5,fontWeight:600,color:"#333",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.label}</div>
+                    {r.sub&&<div style={{fontSize:11,color:"#999",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.sub}</div>}
+                  </div>
+                  <div style={{textAlign:"right",marginLeft:10}}>
+                    <div style={{fontWeight:700,fontSize:12.5,color:dashboardDrill.color,whiteSpace:"nowrap"}}>{r.value}</div>
+                    {r.value2&&<div style={{fontSize:10,fontWeight:600,color:r.value2Color||"#999",whiteSpace:"nowrap"}}>{r.value2}</div>}
+                  </div>
+                  {r.onClick && <span style={{marginLeft:6,color:"#bbb",fontSize:13}}>›</span>}
+                </div>
+              );
+              return (
               <div onClick={()=>setDashboardDrill(null)} style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.35)",zIndex:1000,display:"flex",justifyContent:"flex-end"}}>
                 <div onClick={e=>e.stopPropagation()} style={{width:"min(420px, 92vw)",height:"100%",background:"#fff",boxShadow:"-4px 0 24px rgba(0,0,0,0.2)",display:"flex",flexDirection:"column"}}>
                   <div style={{padding:"16px 18px",borderBottom:"1px solid #eee",display:"flex",alignItems:"center",justifyContent:"space-between",background:dashboardDrill.color+"12"}}>
@@ -4060,30 +4096,27 @@ export default function App() {
                       <span style={{fontSize:22}}>{dashboardDrill.icon}</span>
                       <div>
                         <div style={{fontWeight:800,fontSize:14,color:dashboardDrill.color}}>{dashboardDrill.title}</div>
-                        <div style={{fontSize:11,color:"#888"}}>{dashboardDrill.rows.length} {dashboardDrill.rows.length===1?"entry":"entries"}</div>
+                        <div style={{fontSize:11,color:"#888"}}>{totalEntries} {totalEntries===1?"entry":"entries"}</div>
                       </div>
                     </div>
                     <button onClick={()=>setDashboardDrill(null)} style={{background:"none",border:"none",fontSize:20,color:"#999",cursor:"pointer",lineHeight:1,padding:4}}>×</button>
                   </div>
                   <div style={{flex:1,overflowY:"auto",padding:"8px 10px"}}>
-                    {dashboardDrill.rows.length===0 ? (
+                    {totalEntries===0 ? (
                       <div style={{color:"#aaa",fontSize:12,textAlign:"center",padding:30}}>{dashboardDrill.emptyMsg||"No data"}</div>
-                    ) : dashboardDrill.rows.map((r,i)=>(
-                      <div key={i} onClick={r.onClick||undefined}
-                        style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 10px",borderRadius:8,cursor:r.onClick?"pointer":"default",marginBottom:2}}
-                        onMouseEnter={e=>e.currentTarget.style.background="#f5f8f5"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                        <div style={{minWidth:0,flex:1}}>
-                          <div style={{fontSize:12.5,fontWeight:600,color:"#333",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.label}</div>
-                          {r.sub&&<div style={{fontSize:11,color:"#999",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.sub}</div>}
+                    ) : dashboardDrill.groups ? (
+                      dashboardDrill.groups.map((g,gi)=>g.rows.length>0 && (
+                        <div key={gi}>
+                          <div style={{fontSize:10,fontWeight:700,color:"#fff",background:dashboardDrill.color,padding:"5px 10px",borderRadius:5,margin:"8px 0 3px",letterSpacing:0.3}}>{g.title}</div>
+                          {g.rows.map((r,i)=>RowItem(r,gi+"-"+i))}
                         </div>
-                        <div style={{fontWeight:700,fontSize:12.5,color:dashboardDrill.color,marginLeft:10,whiteSpace:"nowrap"}}>{r.value}</div>
-                        {r.onClick && <span style={{marginLeft:6,color:"#bbb",fontSize:13}}>›</span>}
-                      </div>
-                    ))}
+                      ))
+                    ) : dashboardDrill.rows.map((r,i)=>RowItem(r,i))}
                   </div>
                 </div>
               </div>
-            )}
+              );
+            })()}
           </div>
         );
       })()}
