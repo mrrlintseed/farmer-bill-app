@@ -9,6 +9,24 @@ import { downloadFarmerBillPDF, downloadAllBillsPDF } from "./pdfGenerator";
 
 const DEFAULT_BILL_DATE = "2026-07-01";
 const FOUNDATION_RATE = 1200; // ₹ per acre for foundation seed cost
+// Default company groupings (editable per-variety in the Variety tab — this is just the starting point)
+const DEFAULT_COMPANY_MAP = {
+  "Bio-7511":"Bio Seed",
+  "Crystal-1809":"Crystal Seed","Crystal-485":"Crystal Seed",
+  "Danya-5102":"Danya Seed","Danya-5201":"Danya Seed","Danya-57":"Danya Seed","Danya-6011":"Danya Seed","Danya-87":"Danya Seed",
+  "Kaveri-209":"Kaveri Seed","Kaveri-223":"Kaveri Seed",
+  "Myco-323":"Myco Seed","Myco-392":"Myco Seed","Myco-601":"Myco Seed","Myco-602":"Myco Seed",
+  "Nandi-305":"Nandi Seed",
+  "Nath-8000":"Nath Seed",
+  "NC-5105":"Nuziveedu Seed","NC-5111":"Nuziveedu Seed","NC-5121":"Nuziveedu Seed","NC-5205":"Nuziveedu Seed","NC-5206":"Nuziveedu Seed","NC-5305":"Nuziveedu Seed","NC-5306":"Nuziveedu Seed",
+  "Rasi-302":"Rasi Seed","Rasi-4444":"Rasi Seed","Rasi-901":"Rasi Seed",
+  "Ratnam-9116":"Ratnam Seed","Ratnam-9118":"Ratnam Seed",
+  "Royal-333":"Royal Seed",
+  "SAB-4604":"SAB Seed",
+  "Sri Rama-988":"Sri Rama Seed","Sri Rama-99":"Sri Rama Seed",
+  "Vasantha-119":"Vasantha Seed",
+  "Veda-333":"Veda Seed","Veda-666":"Veda Seed",
+};
 // App version: 2026-07-02-v3-foundation-seeds-fix
 // Global BILL_DATE reads from localStorage so outside-App functions can use it
 let BILL_DATE = (() => { try { return localStorage.getItem("app_bill_date")||DEFAULT_BILL_DATE; } catch { return DEFAULT_BILL_DATE; } })();
@@ -1572,6 +1590,26 @@ export default function App() {
   };
   // Helper: get variety bill date (falls back to global BILL_DATE)
   const getVarietyBillDate = (variety) => varietySettings[variety]?.billDate || BILL_DATE;
+  // Company grouping — status is set at company level only; company assignment is editable per variety
+  const getVarietyCompany = (variety) => varietySettings[variety]?.company || DEFAULT_COMPANY_MAP[variety] || "Unassigned";
+  const setVarietyCompany = (variety, company) => {
+    const nv = {...varietySettings, [variety]: {...(varietySettings[variety]||{}), company}};
+    saveVarietySettings(nv);
+  };
+  const allCompanies = [...new Set([
+    ...Object.values(DEFAULT_COMPANY_MAP),
+    ...Object.keys(varietySettings).filter(k=>!k.startsWith("so_")).map(k=>varietySettings[k]?.company).filter(Boolean)
+  ])].sort();
+  // Setting a company's status cascades to every variety under it (both farmer + sub-org status keys, kept in sync as before)
+  const setCompanyStatus = (varietiesInCompany, status) => {
+    const nv = {...varietySettings};
+    varietiesInCompany.forEach(variety => {
+      const billDate = status==="paid" ? (nv[variety]?.billDate || BILL_DATE) : "";
+      nv[variety] = {...(nv[variety]||{}), status, billDate};
+      nv["so_"+variety] = {...(nv["so_"+variety]||{}), status, billDate};
+    });
+    saveVarietySettings(nv);
+  };
   // Helper: is variety paid
   const isVarietyPaid = (variety) => {
     const s = varietySettings[variety];
@@ -3525,59 +3563,67 @@ export default function App() {
                               <div style={{fontSize:12,color:"#555",marginBottom:8}}>
                                 <strong>Partial Bill</strong> — Shows only selected variety growers. No advances or settlement. Just a payment receipt. Record the amount you pay as Jamma later.
                               </div>
-                              <div style={{fontSize:12,color:"#2d5a8a",fontWeight:600,marginBottom:8}}>Select varieties to include:</div>
+                              <div style={{fontSize:12,color:"#2d5a8a",fontWeight:600,marginBottom:8}}>Select companies to include:</div>
                               <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10}}>
-                                {paidVars.map(v => {
-                                  const checked = selVars.includes(v);
-                                  const cnt = (so.growers||[]).filter(g=>g.variety===v&&g.result==="Pass").length;
-                                  const billDate = getSubOrgVarietyBillDate(v);
-                                  return (
-                                    <div key={v} onClick={()=>setSelVars(checked?selVars.filter(x=>x!==v):[...selVars,v])}
-                                      style={{display:"flex",alignItems:"center",gap:8,padding:"7px 12px",borderRadius:8,cursor:"pointer",border:"2px solid "+(checked?"#2d5a8a":"#c8dfc8"),background:checked?"#e8f0ff":"#fff"}}>
-                                      <div style={{width:16,height:16,borderRadius:3,border:"2px solid "+(checked?"#2d5a8a":"#aaa"),background:checked?"#2d5a8a":"#fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:12,fontWeight:700,flexShrink:0}}>{checked?"✓":""}</div>
-                                      <div>
-                                        <div style={{fontWeight:700,fontSize:12,color:"#1a4a1a"}}>{v}</div>
-                                        <div style={{fontSize:10,color:"#666"}}>📅 {billDate} · {cnt} growers</div>
+                                {(() => {
+                                  const byCompany = {};
+                                  paidVars.forEach(v => { const c=getVarietyCompany(v); (byCompany[c]=byCompany[c]||[]).push(v); });
+                                  return Object.entries(byCompany).sort((a,b)=>a[0]==="Unassigned"?1:b[0]==="Unassigned"?-1:a[0].localeCompare(b[0])).map(([company,vars]) => {
+                                    const checked = vars.every(v=>selVars.includes(v));
+                                    const someChecked = vars.some(v=>selVars.includes(v));
+                                    const cnt = vars.reduce((s,v)=>s+(so.growers||[]).filter(g=>g.variety===v&&g.result==="Pass").length,0);
+                                    return (
+                                      <div key={company} onClick={()=>setSelVars(checked?selVars.filter(x=>!vars.includes(x)):[...new Set([...selVars,...vars])])}
+                                        style={{display:"flex",alignItems:"center",gap:8,padding:"7px 12px",borderRadius:8,cursor:"pointer",border:"2px solid "+(checked?"#2d5a8a":someChecked?"#7ab8e8":"#c8dfc8"),background:checked?"#e8f0ff":someChecked?"#f5faff":"#fff"}}>
+                                        <div style={{width:16,height:16,borderRadius:3,border:"2px solid "+(checked?"#2d5a8a":"#aaa"),background:checked?"#2d5a8a":"#fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:12,fontWeight:700,flexShrink:0}}>{checked?"✓":someChecked?"–":""}</div>
+                                        <div>
+                                          <div style={{fontWeight:700,fontSize:12,color:"#1a4a1a"}}>{company==="Unassigned"?"⚠️ Unassigned":"🏭 "+company}</div>
+                                          <div style={{fontSize:10,color:"#666"}}>{vars.length} variet{vars.length===1?"y":"ies"} · {cnt} growers</div>
+                                        </div>
                                       </div>
-                                    </div>
-                                  );
-                                })}
+                                    );
+                                  });
+                                })()}
                               </div>
                               <div style={{display:"flex",gap:8,alignItems:"center"}}>
                                 <button onClick={()=>setSelVars(paidVars)} style={{background:"#2d5a8a",color:"#fff",border:"none",borderRadius:5,padding:"5px 12px",fontSize:12,cursor:"pointer"}}>☑ Select All</button>
                                 <button onClick={()=>setSelVars([])} style={{background:"#fff",color:"#555",border:"1px solid #c8dfc8",borderRadius:5,padding:"5px 12px",fontSize:12,cursor:"pointer"}}>☐ Clear</button>
-                                <span style={{fontSize:12,color:"#666"}}>{selVars.length>0?((so.growers||[]).filter(g=>selVars.includes(g.variety)&&g.result==="Pass").length)+" growers selected":"Select varieties above"}</span>
+                                <span style={{fontSize:12,color:"#666"}}>{selVars.length>0?((so.growers||[]).filter(g=>selVars.includes(g.variety)&&g.result==="Pass").length)+" growers selected":"Select companies above"}</span>
                               </div>
                             </div>
                           )}
                           {billMode==="final" && (
                             <div>
                               <div style={{fontSize:12,color:"#555",marginBottom:10}}>
-                                <strong>Final Bill</strong> — Shows all growers in 3 sections. Mark which varieties you have already paid to this sub-org as <strong>Settled</strong>.
+                                <strong>Final Bill</strong> — Shows all growers in 3 sections. Mark which companies you have already paid to this sub-org as <strong>Settled</strong>.
                               </div>
-                              {/* Settled varieties selector — per sub-org */}
-                              {paidVars.length > 0 && (
+                              {/* Settled companies selector — per sub-org */}
+                              {paidVars.length > 0 && (() => {
+                                const byCompany = {};
+                                paidVars.forEach(v => { const c=getVarietyCompany(v); (byCompany[c]=byCompany[c]||[]).push(v); });
+                                const companyEntries = Object.entries(byCompany).sort((a,b)=>a[0]==="Unassigned"?1:b[0]==="Unassigned"?-1:a[0].localeCompare(b[0]));
+                                return (
                                 <div style={{marginBottom:8}}>
                                   <div style={{fontSize:12,fontWeight:700,color:"#1a4a1a",marginBottom:6}}>
-                                    Mark varieties already paid to this sub-org as Settled:
+                                    Mark companies already paid to this sub-org as Settled:
                                   </div>
                                   <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:8}}>
-                                    {paidVars.map(v => {
-                                      const isSettled = settledVars.includes(v);
-                                      const amt = (so.growers||[]).filter(g=>g.variety===v&&g.result==="Pass").reduce((s,g)=>s+(parseFloat(g.packets)||0)*(getSubOrgVarietyRate(v)||parseFloat(g.rate)||0),0);
-                                      const note = (so._varietyNotes||{})[v]||"";
-                                      const settledDate = (so._settledDates||{})[v]||"";
+                                    {companyEntries.map(([company,vars]) => {
+                                      const isSettled = vars.every(v=>settledVars.includes(v));
+                                      const amt = vars.reduce((s,v)=>s+(so.growers||[]).filter(g=>g.variety===v&&g.result==="Pass").reduce((ss,g)=>ss+(parseFloat(g.packets)||0)*(getSubOrgVarietyRate(v)||parseFloat(g.rate)||0),0),0);
+                                      const note = (so._varietyNotes||{})[company]||"";
+                                      const settledDate = (so._settledDates||{})[company]||"";
                                       return (
-                                        <div key={v} style={{display:"flex",flexDirection:"column",gap:4,padding:"8px 12px",borderRadius:8,
+                                        <div key={company} style={{display:"flex",flexDirection:"column",gap:4,padding:"8px 12px",borderRadius:8,
                                           border:"2px solid "+(isSettled?"#2d6a2d":"#b0c8e0"),
                                           background:isSettled?"#e8f5e9":"#f0f5ff", minWidth:200}}>
-                                          {/* Checkbox + variety name */}
-                                          <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setSettledVars(isSettled?settledVars.filter(x=>x!==v):[...settledVars,v])}>
+                                          {/* Checkbox + company name */}
+                                          <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setSettledVars(isSettled?settledVars.filter(x=>!vars.includes(x)):[...new Set([...settledVars,...vars])])}>
                                             <div style={{width:18,height:18,borderRadius:3,border:"2px solid "+(isSettled?"#2d6a2d":"#aaa"),background:isSettled?"#2d6a2d":"#fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:12,fontWeight:700,flexShrink:0}}>{isSettled?"✔":""}</div>
                                             <div>
-                                              <div style={{fontWeight:700,fontSize:12,color:isSettled?"#2d6a2d":"#2d5a8a"}}>{v}</div>
+                                              <div style={{fontWeight:700,fontSize:12,color:isSettled?"#2d6a2d":"#2d5a8a"}}>{company==="Unassigned"?"⚠️ Unassigned":"🏭 "+company}</div>
                                               <div style={{fontSize:10,color:isSettled?"#2d6a2d":"#888"}}>
-                                                {isSettled?"✔ Settled":"💰 To Pay"} · ₹{Math.round(amt).toLocaleString("en-IN")}
+                                                {isSettled?"✔ Settled":"💰 To Pay"} · ₹{Math.round(amt).toLocaleString("en-IN")} · {vars.length} variet{vars.length===1?"y":"ies"}
                                               </div>
                                             </div>
                                           </div>
@@ -3587,7 +3633,7 @@ export default function App() {
                                               <label style={{fontSize:10,color:"#2d6a2d",fontWeight:600,whiteSpace:"nowrap"}}>📅 Settled On:</label>
                                               <input type="date" value={settledDate}
                                                 onClick={e=>e.stopPropagation()}
-                                                onChange={e=>{const d={...(so._settledDates||{}),[v]:e.target.value};updateSO({...so,_settledDates:d});}}
+                                                onChange={e=>{const d={...(so._settledDates||{}),[company]:e.target.value};updateSO({...so,_settledDates:d});}}
                                                 style={{fontSize:10,padding:"3px 6px",border:"1px solid #2d6a2d",borderRadius:4,background:"#fff",color:"#1a4a1a",flex:1}}
                                               />
                                             </div>
@@ -3597,7 +3643,7 @@ export default function App() {
                                             placeholder="Notes (optional)"
                                             value={note}
                                             onClick={e=>e.stopPropagation()}
-                                            onChange={e=>{const n={...(so._varietyNotes||{}),[v]:e.target.value};updateSO({...so,_varietyNotes:n});}}
+                                            onChange={e=>{const n={...(so._varietyNotes||{}),[company]:e.target.value};updateSO({...so,_varietyNotes:n});}}
                                             style={{fontSize:10,padding:"3px 6px",border:"1px solid #c8dfc8",borderRadius:4,background:"#fff",color:"#333",width:"100%"}}
                                           />
                                         </div>
@@ -3614,7 +3660,8 @@ export default function App() {
                                     </div>
                                   )}
                                 </div>
-                              )}
+                                );
+                              })()}
                             </div>
                           )}
                         </div>
@@ -4320,6 +4367,9 @@ export default function App() {
                 </div>
 
                 {/* ── Controls ── */}
+                <datalist id="companyDatalist">
+                  {allCompanies.map(c=><option key={c} value={c} />)}
+                </datalist>
                 <div style={{display:"flex",gap:8,alignItems:"center"}}>
                   <button onClick={()=>{const vs={...varietySettings};allVarieties.forEach(v=>{vs[v]={...(vs[v]||{}),status:"paid",billDate:BILL_DATE};vs["so_"+v]={...(vs["so_"+v]||{}),status:"paid",billDate:BILL_DATE};});saveVarietySettings(vs);}} style={{background:"#2d6a2d",color:"#fff",border:"none",borderRadius:6,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>✅ Mark All Paid</button>
                   <button onClick={()=>{const vs={...varietySettings};allVarieties.forEach(v=>{vs[v]={...(vs[v]||{}),status:"pending",billDate:""};vs["so_"+v]={...(vs["so_"+v]||{}),status:"pending",billDate:""};});saveVarietySettings(vs);}} style={{background:"#856404",color:"#fff",border:"none",borderRadius:6,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>⏳ Mark All Pending</button>
@@ -4355,7 +4405,19 @@ export default function App() {
 
                   {/* Data rows */}
                   {/* Pagination for Variety Pay — prevents mobile freeze */}
-                  {varStats.map((v,vi)=>{
+                  {/* Data rows — grouped by Company */}
+                  {(() => {
+                    const sortedStats = [...varStats].sort((a,b) => {
+                      const ca=getVarietyCompany(a.variety), cb=getVarietyCompany(b.variety);
+                      if (ca!==cb) return ca==="Unassigned" ? 1 : cb==="Unassigned" ? -1 : ca.localeCompare(cb);
+                      return a.variety.localeCompare(b.variety);
+                    });
+                    let lastCompany = null;
+                    return sortedStats.map((v,vi)=>{
+                    const company = getVarietyCompany(v.variety);
+                    const isNewGroup = company !== lastCompany;
+                    lastCompany = company;
+                    const companyVarieties = isNewGroup ? sortedStats.filter(x=>getVarietyCompany(x.variety)===company).map(x=>x.variety) : [];
                     const viGlobal = vi;
                     const inFarmer = (farmers||[]).some(f=>(f.crops||[]).some(c=>c.variety===v.variety));
                     const inSubOrg = (subOrgs||[]).some(so=>(so.growers||[]).some(g=>g.variety===v.variety));
@@ -4370,31 +4432,37 @@ export default function App() {
                     const soCropVal = (subOrgs||[]).reduce((s,so)=>(so.growers||[]).filter(g=>g.variety===v.variety&&g.result==="Pass").reduce((ss,g)=>ss+(parseFloat(g.packets)||0)*soRate,0)+s,0);
                     const rowBg = viGlobal%2===0?"#fff":"#f9fdf9";
                     return (<React.Fragment key={v.variety}>
+                    {isNewGroup && (
+                      <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:company==="Unassigned"?"#fdecea":"#2d3a5a",borderTop:"2px solid #1a4a1a"}}>
+                        <div style={{fontWeight:800,fontSize:12,color:"#fff",flex:1}}>{company==="Unassigned"?"⚠️ Unassigned Varieties":"🏭 "+company}</div>
+                        {company!=="Unassigned" ? (
+                          <div style={{display:"flex",gap:4}}>
+                            <button onClick={()=>setCompanyStatus(companyVarieties,"paid")} style={{padding:"4px 10px",borderRadius:4,border:"none",fontWeight:700,fontSize:10,cursor:"pointer",background:"#2d6a2d",color:"#fff"}}>✅ Mark Company Paid</button>
+                            <button onClick={()=>setCompanyStatus(companyVarieties,"pending")} style={{padding:"4px 10px",borderRadius:4,border:"none",fontWeight:700,fontSize:10,cursor:"pointer",background:"#856404",color:"#fff"}}>⏳ Mark Company Pending</button>
+                          </div>
+                        ) : (
+                          <div style={{fontSize:10,color:"#fff"}}>Assign a company to each variety below →</div>
+                        )}
+                      </div>
+                    )}
                     <div style={{display:"grid",gridTemplateColumns:col,borderBottom:"1px solid #e8f5e9",background:rowBg,alignItems:"center",gap:0}}>
                       {/* Variety */}
                       <div style={{...td("#1a4a1a",true,"left"),flexDirection:"column",alignItems:"flex-start",gap:2}}>
                         <div>{v.variety}</div>
-                        <div style={{display:"flex",gap:3}}>
+                        <div style={{display:"flex",gap:3,alignItems:"center"}}>
                           {inFarmer && <span style={{fontSize:9,background:"#e8f0ff",color:"#2d5a8a",borderRadius:3,padding:"1px 4px"}}>👨‍🌾</span>}
                           {inSubOrg && <span style={{fontSize:9,background:"#e8f5e9",color:"#2d6a2d",borderRadius:3,padding:"1px 4px"}}>🏢</span>}
                         </div>
+                        {company==="Unassigned" && (
+                          <input list="companyDatalist" placeholder="Assign company…" defaultValue=""
+                            onBlur={e=>{if(e.target.value.trim())setVarietyCompany(v.variety,e.target.value.trim());}}
+                            onKeyDown={e=>{if(e.key==="Enter"&&e.target.value.trim()){setVarietyCompany(v.variety,e.target.value.trim());}}}
+                            style={{fontSize:9,padding:"2px 4px",borderRadius:3,border:"1px solid #e74c3c",width:"100%"}} />
+                        )}
                       </div>
-                      {/* Status — shared (uses farmer setting as source of truth, applies to both) */}
+                      {/* Status — read-only, set at company level above */}
                       <div style={{padding:"6px 4px",textAlign:"center"}}>
-                        <div style={{display:"flex",gap:2,justifyContent:"center"}}>
-                          <button onClick={()=>{
-                            const nv={...varietySettings};
-                            nv[v.variety]={...(nv[v.variety]||{}),status:"paid",billDate:(nv[v.variety]?.billDate)||BILL_DATE};
-                            nv[vsKey]={...soVs,status:"paid",billDate:soVs.billDate||BILL_DATE};
-                            saveVarietySettings(nv);
-                          }} style={{padding:"3px 6px",borderRadius:4,border:"none",fontWeight:700,fontSize:10,cursor:"pointer",background:v.paid?"#2d6a2d":"#e8f5e9",color:v.paid?"#fff":"#2d6a2d"}}>✅ Paid</button>
-                          <button onClick={()=>{
-                            const nv={...varietySettings};
-                            nv[v.variety]={...(nv[v.variety]||{}),status:"pending",billDate:""};
-                            nv[vsKey]={...soVs,status:"pending",billDate:""};
-                            saveVarietySettings(nv);
-                          }} style={{padding:"3px 6px",borderRadius:4,border:"none",fontWeight:700,fontSize:10,cursor:"pointer",background:!v.paid?"#856404":"#fff3cd",color:!v.paid?"#fff":"#856404"}}>⏳</button>
-                        </div>
+                        <span style={{padding:"3px 6px",borderRadius:4,fontWeight:700,fontSize:10,background:v.paid?"#e8f5e9":"#fff3cd",color:v.paid?"#2d6a2d":"#856404"}}>{v.paid?"✅ Paid":"⏳ Pending"}</span>
                       </div>
                       {/* Type — shared */}
                       <div style={{padding:"4px",textAlign:"center"}}>
@@ -4500,7 +4568,8 @@ export default function App() {
                       </button>
                     </div>
                     </React.Fragment>);
-                  })}
+                  });
+                  })()}
                   {/* ── No Seed Farmers row ── */}
                   {(() => {
                     const noSeedFarmers = (farmers||[]).filter(f=>(f.advances||[]).length>0 && !(f.crops||[]).some(c=>c.variety&&c.variety.trim()));
