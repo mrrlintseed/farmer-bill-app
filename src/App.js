@@ -515,7 +515,7 @@ function BillPreview({ farmer, varietySettings, getVarietyBillDate, isVarietyPai
               {balance >= 0 ? "Balance Payable to Farmer | రైతుకు చెల్లించవలసిన మొత్తం" : "Balance Due from Farmer | రైతు నుండి రావలసిన మొత్తం"}
             </div>
             <div style={{ borderTop: "2px solid #2d6a2d", paddingTop: 6, marginTop: 4, textAlign: "right", fontWeight: 800, fontSize: 18, color: balance >= 0 ? "#1a4a1a" : "#c0392b" }}>
-              ₹{Math.abs(balance).toLocaleString("en-IN")}
+              {balance >= 0 ? "" : "− "}₹{Math.abs(balance).toLocaleString("en-IN")}
             </div>
           </div>
         </div>
@@ -724,7 +724,7 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
                   const offset = growersCalc.filter(x=>_isSettled(x.variety)).length;
                   return (
                     <>
-                    <tr key={"tp"+i} style={{ background: !ip?"#fdecea":i%2===0?"#f0fff0":"#fff", borderBottom:"1px solid #d4edd4" }}>
+                    <tr key={"tp"+i} style={{ background: !ip?"#fdecea":"#fff", borderBottom:"1px solid #d4edd4" }}>
                       <GTD ch={offset + i + 1} />
                       <GTD ch={g.lotNo||"—"} />
                       <GTD ch={<span>{g.name}{g.note?<span title={g.note} style={{marginLeft:3,fontSize:9,color:"#856404"}}>📝</span>:null}</span>} s={{textAlign:"left",overflow:"hidden",textOverflow:"ellipsis"}} />
@@ -944,7 +944,7 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
                   {balance >= 0 ? "Payable to Sub-Org (This Bill)" : "Due from Sub-Org (This Bill)"}
                 </div>
                 <div style={{ borderTop: "2px solid #2d5a8a", paddingTop: 6, marginTop: 4, textAlign: "right", fontWeight: 800, fontSize: 18, color: balance >= 0 ? "#1a4a1a" : "#c0392b" }}>
-                  ₹{Math.abs(balance).toLocaleString("en-IN")}
+                  {balance >= 0 ? "" : "− "}₹{Math.abs(balance).toLocaleString("en-IN")}
                 </div>
               </div>
             </>
