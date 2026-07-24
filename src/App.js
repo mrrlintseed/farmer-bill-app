@@ -3493,8 +3493,13 @@ export default function App() {
                   )}
 
                   {subOrgTab==="bill"&&(()=>{
-                    const paidVars = allSubOrgVarieties.filter(v=>isSubOrgVarietyPaid(v));
-                    const pendingVars = allSubOrgVarieties.filter(v=>!isSubOrgVarietyPaid(v));
+                    // Only this sub-org's own varieties — not every variety across all sub-orgs
+                    const soOwnVarieties = [...new Set([
+                      ...(so.growers||[]).map(g=>g.variety),
+                      ...(so.foundationSeeds||[]).map(f=>f.variety)
+                    ].filter(Boolean))].sort();
+                    const paidVars = soOwnVarieties.filter(v=>isSubOrgVarietyPaid(v));
+                    const pendingVars = soOwnVarieties.filter(v=>!isSubOrgVarietyPaid(v));
                     const [billMode, setBillMode] = [so._billMode||"partial", (m)=>updateSO({...so,_billMode:m})];
                     const [selVars, setSelVars] = [so._selVars||[], (v)=>updateSO({...so,_selVars:v})];
                     // Per-sub-org settled varieties (stored on the sub-org object)
@@ -3677,7 +3682,7 @@ export default function App() {
                             getSubOrgVarietyBillDate={getSubOrgVarietyBillDate}
                             getSubOrgVarietyRate={getSubOrgVarietyRate}
                             getSubOrgVarietyType={getSubOrgVarietyType}
-                            soVarieties={allSubOrgVarieties}
+                            soVarieties={soOwnVarieties}
                           />
                         </div>
                       </div>
