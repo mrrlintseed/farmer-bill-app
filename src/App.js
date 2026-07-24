@@ -1,3 +1,4 @@
+// App build: 2026-07-24-force-rebuild — company grouping, minus-sign due amounts, single-color TO PAY rows
 // FIXED: calcCompoundInterest global scope + Growers Telugu print only — 2026-07-16
 // FIXED BUILD: Growers-tab Telugu print only + Babel syntax repair — 2026-07-16
 // App version: 2026-07-14-telugu-print-only
