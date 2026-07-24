@@ -597,7 +597,7 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
   const totalPendingAmt = growersCalc.reduce((s,g) => s + g.pendingAmt, 0);
   // Foundation from foundationSeeds (set in Excel Sheet2)
   const totalFoundation = (so.foundationSeeds||[]).reduce((s,fs) => s + (parseFloat(fs.area)||0) * FOUNDATION_RATE, 0);
-  const totalTransport = passGrowers.reduce((s, g) => s + (parseFloat(g.packets) || 0), 0);
+  const totalTransport = growers.reduce((s, g) => s + (parseFloat(g.packets) || 0), 0);
   // Jamma calculation — only in final bill
   const jammaCalcSO = (_billMode === "partial" ? [] : (so.jammaEntries||[])).map(j => {
     const amt = parseFloat(j.amount)||0;
@@ -772,7 +772,7 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
                 <tr style={{ background: "#e8f0ff", fontWeight: 700 }}>
                   <td colSpan={6} style={{ padding:"3px 4px",fontSize:9,color:"#1a2a4a" }}>TOTAL</td>
                   <GTD ch={growers.reduce((s,g)=>s+(parseFloat(g.packets)||0),0)} />
-                  <GTD ch={passGrowers.length+"P/"+growers.length-passGrowers.length+"F"} />
+                  <GTD ch={passGrowers.length+"P/"+(growers.length-passGrowers.length)+"F"} />
                   <GTD ch="" /><GTD ch="" />
                   <GTD ch={"₹"+totalToPayAmt.toLocaleString("en-IN")} s={{ color:"#2d5a8a" }} />
                 </tr>
@@ -2112,7 +2112,8 @@ export default function App() {
         settled_g.forEach(g=>{
           const pkts=parseFloat(g.packets)||0,rt=gRate(g.variety,g.rate),gt=gType(g.variety,g.type);
           const amt=g.result==="Pass"?pkts*rt:0;
-          if(g.result==="Pass"){ts+=amt;tt+=pkts;}
+          if(g.result==="Pass"){ts+=amt;}
+          tt+=pkts;
           rows.push([sno++,String(g.lotNo||""),g.name||"",g.fatherName||"—",g.village||"",g.variety||"",pkts,g.result||"",gt,g.result==="Pass"?rt:"—",g.result==="Pass"?amt:"—",g.note||""]);
         });
       }
@@ -2122,7 +2123,8 @@ export default function App() {
         topay_g.forEach(g=>{
           const pkts=parseFloat(g.packets)||0,rt=gRate(g.variety,g.rate),gt=gType(g.variety,g.type);
           const amt=g.result==="Pass"?pkts*rt:0;
-          if(g.result==="Pass"){ts+=amt;tt+=pkts;}
+          if(g.result==="Pass"){ts+=amt;}
+          tt+=pkts;
           rows.push([sno++,String(g.lotNo||""),g.name||"",g.fatherName||"—",g.village||"",g.variety||"",pkts,g.result||"",gt,g.result==="Pass"?rt:"—",g.result==="Pass"?amt:"—",g.note||""]);
         });
       }
@@ -2132,6 +2134,7 @@ export default function App() {
         pend_g.forEach(g=>{
           const pkts=parseFloat(g.packets)||0,rt=gRate(g.variety,g.rate),gt=gType(g.variety,g.type);
           if(g.result==="Pass") tp+=pkts*rt;
+          tt+=pkts;
           rows.push([sno++,String(g.lotNo||""),g.name||"",g.fatherName||"—",g.village||"",g.variety||"",pkts,g.result||"",gt,g.result==="Pass"?rt:"—",g.result==="Pass"?"Pending":"—",g.note||""]);
         });
       }
@@ -3235,6 +3238,55 @@ export default function App() {
                           </div>
                         ))}
                         <button onClick={()=>updateSO({...so,advances:[...(so.advances||[]),{date:new Date().toISOString().split("T")[0],amount:0,interestRate:24,note:""}]})} style={{background:"#e8f0ff",color:"#2d5a8a",border:"1px dashed #2d5a8a",borderRadius:4,padding:"4px 12px",cursor:"pointer",fontSize:12}}>+ Add Advance</button>
+                        {pesticideList && pesticideList.filter(p=>p.name&&(p.sizes||[]).some(s=>s.size||s.price)).length > 0 && (
+                          <div style={{marginTop:8,background:"#fff8f0",border:"1px solid #f0a040",borderRadius:6,padding:"8px 10px"}}>
+                            <div style={{fontSize:11,color:"#b35c00",fontWeight:700,marginBottom:6}}>🧪 Add Pesticide as Advance</div>
+                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 0.7fr auto",gap:6,alignItems:"end"}}>
+                              <div>
+                                <label style={{fontSize:10,color:"#888",display:"block",marginBottom:2}}>Date</label>
+                                <input id={"so-pest-date-"+so.id} type="date"
+                                  defaultValue={new Date().toISOString().split("T")[0]}
+                                  style={{width:"100%",padding:"6px 8px",border:"1px solid #f0a040",borderRadius:4,fontSize:13}} />
+                              </div>
+                              <div>
+                                <label style={{fontSize:10,color:"#888",display:"block",marginBottom:2}}>Pesticide &amp; Size</label>
+                                <select id={"so-pest-sel-"+so.id} style={{width:"100%",padding:"6px 8px",border:"1px solid #f0a040",borderRadius:4,fontSize:13,background:"#fffdf5"}}>
+                                  <option value="">— Select —</option>
+                                  {pesticideList.filter(p=>p.name).flatMap((p,pi)=>
+                                    (p.sizes||[]).filter(s=>s.size||s.price).map((s,si)=>(
+                                      <option key={pi+"-"+si} value={pi+"-"+si}>{p.name} {s.size} (₹{s.price})</option>
+                                    ))
+                                  )}
+                                </select>
+                              </div>
+                              <div>
+                                <label style={{fontSize:10,color:"#888",display:"block",marginBottom:2}}>Packets</label>
+                                <input id={"so-pest-qty-"+so.id} type="number" min="1" defaultValue="1"
+                                  style={{width:"100%",padding:"6px 8px",border:"1px solid #f0a040",borderRadius:4,fontSize:13}} />
+                              </div>
+                              <button onClick={()=>{
+                                const sel = document.getElementById(`so-pest-sel-${so.id}`);
+                                const qtyEl = document.getElementById(`so-pest-qty-${so.id}`);
+                                const dateEl = document.getElementById(`so-pest-date-${so.id}`);
+                                const val = sel.value;
+                                const qty = parseFloat(qtyEl.value)||1;
+                                const date = dateEl.value || new Date().toISOString().split("T")[0];
+                                if (!val) { alert("Please select a pesticide"); return; }
+                                const [pi, si] = val.split("-").map(Number);
+                                const p = pesticideList[pi];
+                                const s = p.sizes[si];
+                                const amount = s.price * qty;
+                                const note = `${p.name} ${s.size} ×${qty}`;
+                                updateSO({...so, advances:[...(so.advances||[]),{
+                                  date, amount, interestRate: 0, note
+                                }]});
+                                sel.value=""; qtyEl.value="1";
+                              }} style={{background:"#e67e22",color:"#fff",border:"none",borderRadius:4,padding:"6px 14px",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",marginTop:16}}>
+                                ➕ Add
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
 
 
