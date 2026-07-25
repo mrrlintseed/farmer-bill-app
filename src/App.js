@@ -110,7 +110,7 @@ function printBill(elementId, filename) {
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Telugu&family=Noto+Serif:wght@400;600;700&display=swap" rel="stylesheet"/>
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
-      body { font-family: 'Noto Serif', Georgia, serif; padding: 10px; background: #fff; }
+      body { font-family: 'Noto Serif', Georgia, serif; padding: 10px; background: #fff; zoom: 1.2; }
       table { border-collapse: collapse; width: 100%; }
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
       @page { margin: 8mm; size: A4 portrait; }
@@ -754,7 +754,7 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
                   const offset = growersCalc.filter(x=>_isPaid(x.variety)).length;
                   return (
                     <>
-                    <tr key={"pd"+i} style={{ background:"#fff8e6", borderBottom:"1px solid #f0d080" }}>
+                    <tr key={"pd"+i} style={{ background: ip?"#fff8e6":"#fdecea", borderBottom:"1px solid #f0d080" }}>
                       <GTD ch={offset + i + 1} />
                       <GTD ch={g.lotNo||"—"} />
                       <GTD ch={<span>{g.name}{g.note?<span title={g.note} style={{marginLeft:3,fontSize:9,color:"#856404"}}>📝</span>:null}</span>} s={{textAlign:"left",overflow:"hidden",textOverflow:"ellipsis"}} />
@@ -885,7 +885,7 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
           );
         })()}
 
-        <div style={{ background: _billMode==="partial" ? "#f0f5ff" : (balance >= 0 ? "#e8f5e9" : "#fdecea"), borderRadius: 6, padding: "12px 16px", border: "2px solid "+(_billMode==="partial"?"#2d5a8a":balance >= 0 ? "#2d6a2d" : "#e74c3c") }}>
+        <div style={{ background: _billMode==="partial" ? "#f0f5ff" : (balance >= 0 ? "#e8f5e9" : "#fdecea"), borderRadius: 6, padding: "12px 16px", border: "2px solid "+(_billMode==="partial"?"#2d5a8a":balance >= 0 ? "#2d6a2d" : "#e74c3c"), pageBreakInside: "avoid", breakInside: "avoid" }}>
           {_billMode === "partial" ? (
             <>
               <div style={{ fontWeight:700, color:"#2d5a8a", marginBottom:8, fontSize:13 }}>
