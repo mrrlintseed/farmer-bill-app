@@ -102,17 +102,11 @@ function printBill(elementId, filename) {
   const el = document.getElementById(elementId);
   if (!el) { alert("Please go to the Preview tab first, then click Print."); return; }
 
-  const origTitle = document.title;
-  document.title = filename || "farmer-bill";
-
-  // Get the bill HTML with all inline styles (React renders inline styles so they copy perfectly)
+  const title = filename || "farmer-bill";
   const billHTML = el.outerHTML;
 
-  // Save original body
-  const origBody = document.body.innerHTML;
-
-  // Replace body with just the bill
-  document.body.innerHTML = `
+  const fullHTML = `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
+    <title>${title}</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Telugu&family=Noto+Serif:wght@400;600;700&display=swap" rel="stylesheet"/>
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -121,18 +115,25 @@ function printBill(elementId, filename) {
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
       @page { margin: 8mm; size: A4 portrait; }
     </style>
+    </head><body>
     ${billHTML}
-  `;
+    <script>
+      window.onload = function () {
+        setTimeout(function () { window.print(); }, 300);
+      };
+    <\/script>
+    </body></html>`;
 
-  // Use setTimeout to let the DOM update before printing
-  setTimeout(() => {
-    window.print();
-    // After print dialog closes, reload to restore the app
-    setTimeout(() => {
-      document.title = origTitle;
-      window.location.reload();
-    }, 500);
-  }, 300);
+  // Open in a new tab instead of replacing the current page — nothing about
+  // this app's page changes, so there's no reload to interrupt your print/share.
+  const w = window.open('', '_blank');
+  if (!w) {
+    alert("Your browser blocked the new tab. Please allow pop-ups for this site, then try Print again.");
+    return;
+  }
+  w.document.open();
+  w.document.write(fullHTML);
+  w.document.close();
 }
 
 // ─── Farmer Bill ────────────────────────────────────────────────
