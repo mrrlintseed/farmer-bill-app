@@ -1411,6 +1411,10 @@ export default function App() {
   const [printQueue, setPrintQueue] = useState([]);
   const [printQueueIdx, setPrintQueueIdx] = useState(-1);
   const [printQueueTotal, setPrintQueueTotal] = useState(0);
+  const [printQueueTelugu, setPrintQueueTelugu] = useState(false);
+  const [printQueueOverride, setPrintQueueOverride] = useState(null); // translated farmer to render instead of the raw one
+  const [previewTeluguOverride, setPreviewTeluguOverride] = useState(null); // translated farmer for single-bill preview — never written to real data
+  const [subOrgTeluguOverride, setSubOrgTeluguOverride] = useState(null); // translated sub-org for bill preview — never written to real data
 
   const [billingHistory, setBillingHistory] = useState(() => {
     try { const s=localStorage.getItem("billing_history"); return s?JSON.parse(s):{}; } catch { return {}; }
@@ -2763,18 +2767,17 @@ export default function App() {
                       const translated = await translateToTelugu(texts);
                       const [tName,tFather,tVillage,tCareOf] = translated;
                       const telugu = {...f, name:tName||f.name, fatherName:tFather||f.fatherName, village:tVillage||f.village, careOf:tCareOf||f.careOf};
-                      const origFarmer = {...currentFarmer};
-                      const idx = farmers.findIndex(x=>x.id===f.id);
-                      if(idx>=0){const copy=[...farmers];copy[idx]=telugu;setFarmers(copy);}
+                      // Only the on-screen preview is swapped for printing — the real farmer record is never touched
+                      setPreviewTeluguOverride(telugu);
                       setTimeout(()=>{
                         printBill('bill-single',`bill_telugu_${f.farmerNo||f.name||'farmer'}`);
-                        setTimeout(()=>{if(idx>=0){const copy=[...farmers];copy[idx]=origFarmer;setFarmers(copy);}},1000);
+                        setTimeout(()=>{ setPreviewTeluguOverride(null); },1000);
                       },200);
                       btn.disabled=false; btn.textContent="🔤 Print in Telugu";
                     } catch(err){alert("Translation failed: "+err.message);btn.disabled=false;btn.textContent="🔤 Print in Telugu";}
                   }} style={{background:"#6a1a8a",color:"#fff",border:"none",borderRadius:5,padding:"7px 18px",cursor:"pointer",fontSize:13}}>🔤 Print in Telugu</button>
                 </div>
-                <div id="bill-single"><BillPreview farmer={currentFarmer} varietySettings={varietySettings} getVarietyBillDate={getVarietyBillDate} isVarietyPaid={isVarietyPaid} getVarietyRate={getVarietyRate} getVarietyType={getVarietyType} /></div>
+                <div id="bill-single"><BillPreview farmer={previewTeluguOverride || currentFarmer} varietySettings={varietySettings} getVarietyBillDate={getVarietyBillDate} isVarietyPaid={isVarietyPaid} getVarietyRate={getVarietyRate} getVarietyType={getVarietyType} /></div>
               </div>
             )}
             {tab==="all"&&(()=>{
@@ -2954,14 +2957,24 @@ export default function App() {
                         {selectedVillage && <strong style={{color:"#2d6a2d"}}> · 📍 {selectedVillage} only</strong>}
                       </span>
                       {selectedPrintVarieties.length > 0 && (
-                        <button onClick={()=>{ setPrintQueue(filteredFarmers); setPrintQueueIdx(0); setPrintQueueTotal(filteredFarmers.length); }} style={{ background:"#2d6a2d",color:"#fff",border:"none",borderRadius:5,padding:"7px 16px",cursor:"pointer",fontSize:13,fontWeight:700,marginLeft:"auto" }}>
+                        <>
+                        <button onClick={()=>{ setPrintQueueTelugu(false); setPrintQueueOverride(null); setPrintQueue(filteredFarmers); setPrintQueueIdx(0); setPrintQueueTotal(filteredFarmers.length); }} style={{ background:"#2d6a2d",color:"#fff",border:"none",borderRadius:5,padding:"7px 16px",cursor:"pointer",fontSize:13,fontWeight:700,marginLeft:"auto" }}>
                           🖨 Print {filteredFarmers.length} Bills (One by One)
                         </button>
+                        <button onClick={()=>{ setPrintQueueTelugu(true); setPrintQueueOverride(null); setPrintQueue(filteredFarmers); setPrintQueueIdx(0); setPrintQueueTotal(filteredFarmers.length); }} style={{ background:"#6a1a8a",color:"#fff",border:"none",borderRadius:5,padding:"7px 16px",cursor:"pointer",fontSize:13,fontWeight:700 }}>
+                          🔤 Print {filteredFarmers.length} Bills in Telugu (One by One)
+                        </button>
+                        </>
                       )}
                       {selectedPrintVarieties.length === 0 && (
-                        <button onClick={()=>{ setPrintQueue(farmers); setPrintQueueIdx(0); setPrintQueueTotal(farmers.length); }} style={{ background:"#555",color:"#fff",border:"none",borderRadius:5,padding:"7px 16px",cursor:"pointer",fontSize:13,marginLeft:"auto" }}>
-                          🖨 Print All {farmers.length} Bills (One by One)
+                        <>
+                        <button onClick={()=>{ setPrintQueueTelugu(false); setPrintQueueOverride(null); setPrintQueue(filteredFarmers); setPrintQueueIdx(0); setPrintQueueTotal(filteredFarmers.length); }} style={{ background:"#555",color:"#fff",border:"none",borderRadius:5,padding:"7px 16px",cursor:"pointer",fontSize:13,marginLeft:"auto" }}>
+                          🖨 Print All {filteredFarmers.length} Bills (One by One)
                         </button>
+                        <button onClick={()=>{ setPrintQueueTelugu(true); setPrintQueueOverride(null); setPrintQueue(filteredFarmers); setPrintQueueIdx(0); setPrintQueueTotal(filteredFarmers.length); }} style={{ background:"#6a1a8a",color:"#fff",border:"none",borderRadius:5,padding:"7px 16px",cursor:"pointer",fontSize:13,fontWeight:700 }}>
+                          🔤 Print All {filteredFarmers.length} Bills in Telugu (One by One)
+                        </button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -3746,26 +3759,13 @@ export default function App() {
                               const soNames = {name:so.name||"",fatherName:so.fatherName||"",village:so.village||""};
                               const allTexts = [soNames.name, soNames.fatherName, soNames.village, ...growerNames.flatMap(g=>[g.name,g.fatherName,g.village])];
                               const tr = await translateToTelugu(allTexts);
-                              // Temporarily update for printing only
-                              const origName=so.name, origFather=so.fatherName, origVillage=so.village;
-                              const origGrowerNames=(so.growers||[]).map(g=>({name:g.name,fatherName:g.fatherName,village:g.village}));
-                              const idx=subOrgs.findIndex(x=>x.id===so.id);
-                              if(idx>=0){
-                                const copy=[...subOrgs];
-                                copy[idx]={...so,name:tr[0]||so.name,fatherName:tr[1]||so.fatherName,village:tr[2]||so.village,
-                                  growers:(so.growers||[]).map((g,i)=>({...g,name:tr[3+i*3]||g.name,fatherName:tr[3+i*3+1]||g.fatherName,village:tr[3+i*3+2]||g.village}))};
-                                setSubOrgs(copy);
-                              }
+                              // Only the on-screen preview is swapped for printing — the real sub-org record is never touched
+                              const translatedSO = {...so, name:tr[0]||so.name, fatherName:tr[1]||so.fatherName, village:tr[2]||so.village,
+                                growers:(so.growers||[]).map((g,i)=>({...g,name:tr[3+i*3]||g.name,fatherName:tr[3+i*3+1]||g.fatherName,village:tr[3+i*3+2]||g.village}))};
+                              setSubOrgTeluguOverride(translatedSO);
                               setTimeout(()=>{
                                 printBill('suborg-bill','bill_telugu_'+(billMode==="partial"?"partial":"final")+'_suborg_'+(so.accNo||so.name||'suborg'));
-                                setTimeout(()=>{
-                                  if(idx>=0){
-                                    const copy2=[...subOrgs];
-                                    copy2[idx]={...so,name:origName,fatherName:origFather,village:origVillage,
-                                      growers:(so.growers||[]).map((g,i)=>({...g,...origGrowerNames[i]}))};
-                                    setSubOrgs(copy2);
-                                  }
-                                },1500);
+                                setTimeout(()=>{ setSubOrgTeluguOverride(null); },1500);
                               },300);
                               btn.disabled=false; btn.textContent="🔤 Print in Telugu";
                             } catch(err){alert("Translation failed: "+err.message);btn.disabled=false;btn.textContent="🔤 Print in Telugu";}
@@ -3775,7 +3775,7 @@ export default function App() {
                         {/* ── Bill Preview ── */}
                         <div id="suborg-bill">
                           <SubOrgBill
-                            so={so}
+                            so={subOrgTeluguOverride || so}
                             billMode={billMode}
                             selectedVarieties={selVars}
                             settledVarieties={settledVars}
@@ -4888,7 +4888,19 @@ export default function App() {
         const qf = printQueue[printQueueIdx];
         const isLast = printQueueIdx >= printQueue.length - 1;
 
-        const openInNewTab = (farmer) => {
+        const openInNewTab = async (farmer) => {
+          if (printQueueTelugu) {
+            try {
+              const texts = [farmer.name||"", farmer.fatherName||"", farmer.village||"", farmer.careOf||""];
+              const translated = await translateToTelugu(texts);
+              const [tName,tFather,tVillage,tCareOf] = translated;
+              setPrintQueueOverride({...farmer, name:tName||farmer.name, fatherName:tFather||farmer.fatherName, village:tVillage||farmer.village, careOf:tCareOf||farmer.careOf});
+            } catch(err) { alert("Translation failed: "+err.message); setPrintQueueOverride(null); }
+            await new Promise(r=>setTimeout(r,300)); // let the off-screen bill re-render with translated text
+          } else {
+            setPrintQueueOverride(null);
+          }
+
           // Build the full bill HTML
           const billDiv = document.createElement("div");
           billDiv.id = "tmp-bill-render";
@@ -4901,7 +4913,7 @@ export default function App() {
               const el = document.getElementById("bill-queue-single");
               if (!el) { billDiv.remove(); resolve(); return; }
               const billHTML = el.outerHTML;
-              const fname = "bill_" + ((farmer?.farmerNo || "").replace(/[^a-zA-Z0-9-_]/g, "_")) + "_" + ((farmer?.name || "").replace(/\s+/g, "_").substring(0, 20));
+              const fname = "bill_" + (printQueueTelugu?"telugu_":"") + ((farmer?.farmerNo || "").replace(/[^a-zA-Z0-9-_]/g, "_")) + "_" + ((farmer?.name || "").replace(/\s+/g, "_").substring(0, 20));
               const fullHTML = "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"/><title>" + fname + "</title>"
   +"\n                <link href=\"https://fonts.googleapis.com/css2?family=Noto+Serif+Telugu&family=Noto+Serif:wght@400;600;700&display=swap\" rel=\"stylesheet\"/>"
   +"\n                <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Noto Serif',Georgia,serif;padding:10px;background:#fff;}table{border-collapse:collapse;width:100%;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}@page{margin:8mm;size:A4 portrait;}</style>"
@@ -4913,6 +4925,7 @@ export default function App() {
               const tab = window.open(url, "_blank");
               setTimeout(() => URL.revokeObjectURL(url), 30000);
               billDiv.remove();
+              setPrintQueueOverride(null);
               resolve();
             }, 400);
           });
@@ -4920,17 +4933,17 @@ export default function App() {
 
         return (
           <div style={{position:"fixed",top:0,left:0,width:"100%",height:"100%",background:"rgba(0,0,0,0.88)",zIndex:9999,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
-            <div style={{color:"#fff",fontSize:18,fontWeight:700}}>🖨 Print Queue — Bill {printQueueIdx+1} of {printQueueTotal}</div>
+            <div style={{color:"#fff",fontSize:18,fontWeight:700}}>{printQueueTelugu?"🔤":"🖨"} Print Queue — Bill {printQueueIdx+1} of {printQueueTotal}{printQueueTelugu&&<span style={{color:"#d8a8ff",fontSize:13,marginLeft:8}}>(Telugu)</span>}</div>
             {/* Progress bar */}
             <div style={{width:360,background:"rgba(255,255,255,0.15)",borderRadius:10,overflow:"hidden",height:14}}>
-              <div style={{background:"#2d6a2d",height:"100%",borderRadius:10,width:(((printQueueIdx+1)/printQueueTotal)*100)+"%",transition:"width 0.3s"}}></div>
+              <div style={{background:printQueueTelugu?"#6a1a8a":"#2d6a2d",height:"100%",borderRadius:10,width:(((printQueueIdx+1)/printQueueTotal)*100)+"%",transition:"width 0.3s"}}></div>
             </div>
             <div style={{color:"#ccc",fontSize:14}}>Farmer #{qf?.farmerNo} — {qf?.name} — {qf?.village}</div>
 
             {/* Hidden bill rendered off-screen for capturing HTML */}
             <div style={{position:"absolute",left:"-9999px",top:0,width:"210mm",background:"#fff"}}>
               <div id="bill-queue-single">
-                <BillPreview farmer={qf} varietySettings={varietySettings} getVarietyBillDate={getVarietyBillDate} isVarietyPaid={isVarietyPaid} getVarietyRate={getVarietyRate} getVarietyType={getVarietyType} />
+                <BillPreview farmer={printQueueOverride || qf} varietySettings={varietySettings} getVarietyBillDate={getVarietyBillDate} isVarietyPaid={isVarietyPaid} getVarietyRate={getVarietyRate} getVarietyType={getVarietyType} />
               </div>
             </div>
 
@@ -4939,21 +4952,31 @@ export default function App() {
               <button onClick={async ()=>{
                 await openInNewTab(qf);
                 if (!isLast) setPrintQueueIdx(qi=>qi+1);
-                else { setPrintQueueIdx(-1); setPrintQueue([]); }
+                else { setPrintQueueIdx(-1); setPrintQueue([]); setPrintQueueTelugu(false); }
               }} style={{background:"#2d6a2d",color:"#fff",border:"none",borderRadius:8,padding:"14px 32px",fontSize:16,fontWeight:700,cursor:"pointer"}}>
-                🖨 Open PDF → {isLast ? "Done" : "Next Bill"}
+                {printQueueTelugu?"🔤":"🖨"} Open PDF → {isLast ? "Done" : "Next Bill"}
               </button>
               {/* Open ALL remaining in tabs */}
               <button onClick={async ()=>{
                 const remaining = printQueue.slice(printQueueIdx);
                 for (let i=0; i<remaining.length; i++) {
                   setPrintQueueIdx(printQueueIdx + i);
+                  const f = remaining[i];
+                  if (printQueueTelugu) {
+                    try {
+                      const texts = [f.name||"", f.fatherName||"", f.village||"", f.careOf||""];
+                      const translated = await translateToTelugu(texts);
+                      const [tName,tFather,tVillage,tCareOf] = translated;
+                      setPrintQueueOverride({...f, name:tName||f.name, fatherName:tFather||f.fatherName, village:tVillage||f.village, careOf:tCareOf||f.careOf});
+                    } catch(err) { setPrintQueueOverride(null); }
+                  } else {
+                    setPrintQueueOverride(null);
+                  }
                   await new Promise(r=>setTimeout(r,600));
                   const el = document.getElementById("bill-queue-single");
                   if (!el) continue;
                   const billHTML = el.outerHTML;
-                  const f = remaining[i];
-                  const fname = "bill_" + ((f?.farmerNo || "").replace(/[^a-zA-Z0-9-_]/g, "_")) + "_" + ((f?.name || "").replace(/\s+/g, "_").substring(0, 20));
+                  const fname = "bill_" + (printQueueTelugu?"telugu_":"") + ((f?.farmerNo || "").replace(/[^a-zA-Z0-9-_]/g, "_")) + "_" + ((f?.name || "").replace(/\s+/g, "_").substring(0, 20));
                   const fullHTML = "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"/><title>" + fname + "</title>"
   +"\n                    <link href=\"https://fonts.googleapis.com/css2?family=Noto+Serif+Telugu&family=Noto+Serif:wght@400;600;700&display=swap\" rel=\"stylesheet\"/>"
   +"\n                    <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Noto Serif',Georgia,serif;padding:10px;background:#fff;}table{border-collapse:collapse;width:100%;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}@page{margin:8mm;size:A4 portrait;}</style>"
@@ -4966,12 +4989,12 @@ export default function App() {
                   setTimeout(()=>URL.revokeObjectURL(url), 30000);
                   await new Promise(r=>setTimeout(r,800));
                 }
-                setPrintQueueIdx(-1); setPrintQueue([]);
+                setPrintQueueIdx(-1); setPrintQueue([]); setPrintQueueOverride(null); setPrintQueueTelugu(false);
               }} style={{background:"#856404",color:"#fff",border:"none",borderRadius:8,padding:"14px 24px",fontSize:14,fontWeight:600,cursor:"pointer"}}>
                 ⚡ Open All {printQueue.length - printQueueIdx} Tabs At Once
               </button>
-              {!isLast && <button onClick={()=>setPrintQueueIdx(qi=>qi+1)} style={{background:"#2d5a8a",color:"#fff",border:"none",borderRadius:8,padding:"14px 24px",fontSize:15,cursor:"pointer"}}>⏭ Skip</button>}
-              <button onClick={()=>{setPrintQueueIdx(-1);setPrintQueue([]);}} style={{background:"#c0392b",color:"#fff",border:"none",borderRadius:8,padding:"14px 20px",fontSize:15,cursor:"pointer"}}>✕ Stop</button>
+              {!isLast && <button onClick={()=>{setPrintQueueOverride(null);setPrintQueueIdx(qi=>qi+1);}} style={{background:"#2d5a8a",color:"#fff",border:"none",borderRadius:8,padding:"14px 24px",fontSize:15,cursor:"pointer"}}>⏭ Skip</button>}
+              <button onClick={()=>{setPrintQueueIdx(-1);setPrintQueue([]);setPrintQueueOverride(null);setPrintQueueTelugu(false);}} style={{background:"#c0392b",color:"#fff",border:"none",borderRadius:8,padding:"14px 20px",fontSize:15,cursor:"pointer"}}>✕ Stop</button>
             </div>
 
             {isLast && <div style={{color:"#2ecc71",fontSize:14,fontWeight:700}}>✅ Last bill in queue!</div>}
