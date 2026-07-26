@@ -2783,13 +2783,14 @@ export default function App() {
               // If nothing selected, show all farmers
               const noSeedSelected = selectedPrintVarieties.includes("__NO_SEED__");
               const paidVarSelected = selectedPrintVarieties.filter(v=>v!=="__NO_SEED__");
-              const filteredFarmers = selectedPrintVarieties.length === 0
+              const filteredFarmers = (selectedPrintVarieties.length === 0
                 ? farmers
                 : farmers.filter(f => {
                     const hasSelectedVariety = paidVarSelected.length>0 && (f.crops||[]).some(c=>paidVarSelected.includes(c.variety)&&isVarietyPaid(c.variety));
                     const isNoSeed = noSeedSelected && (f.advances||[]).length>0 && !(f.crops||[]).some(c=>c.variety&&c.variety.trim());
                     return hasSelectedVariety || isNoSeed;
-                  });
+                  })
+              ).filter(f => selectedVillage===null || (f.village?.trim()||"")===selectedVillage);
 
               // Paid varieties for checkboxes
               const paidVarieties = allVarieties.filter(v => isVarietyPaid(v));
@@ -2948,8 +2949,9 @@ export default function App() {
                       <button onClick={()=>setSelectedPrintVarieties([])} style={{ background:"#fff",color:"#555",border:"1px solid #c8dfc8",borderRadius:5,padding:"5px 12px",fontSize:12,cursor:"pointer" }}>☐ Clear</button>
                       <span style={{ fontSize:12,color:"#666" }}>
                         {selectedPrintVarieties.length === 0
-                          ? `Showing all ${farmers.length} farmers`
+                          ? `Showing all ${filteredFarmers.length} farmers`
                           : `${filteredFarmers.length} farmers selected for printing`}
+                        {selectedVillage && <strong style={{color:"#2d6a2d"}}> · 📍 {selectedVillage} only</strong>}
                       </span>
                       {selectedPrintVarieties.length > 0 && (
                         <button onClick={()=>{ setPrintQueue(filteredFarmers); setPrintQueueIdx(0); setPrintQueueTotal(filteredFarmers.length); }} style={{ background:"#2d6a2d",color:"#fff",border:"none",borderRadius:5,padding:"7px 16px",cursor:"pointer",fontSize:13,fontWeight:700,marginLeft:"auto" }}>
