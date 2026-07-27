@@ -3739,7 +3739,7 @@ export default function App() {
                                 const lastEntry = history.length>0 ? history[history.length-1] : null;
                                 const lastCp = lastEntry || {advanceUsed:0,foundationUsed:0,transportUsed:0,jammaUsed:0};
                                 const carryForwardDue = lastEntry && lastEntry.runningDue>0 ? lastEntry.runningDue : 0;
-                                const addSettlementEntry=(companiesLabel,seedAmount)=>{
+                                const buildSettlementEntry=(companiesLabel,seedAmount)=>{
                                   const deltaAdv=Math.max(0,cpAdvWithInt-lastCp.advanceUsed);
                                   const deltaFound=Math.max(0,cpFoundation-lastCp.foundationUsed);
                                   const deltaTrans=Math.max(0,cpTransport-lastCp.transportUsed);
@@ -3749,9 +3749,8 @@ export default function App() {
                                   // If it comes out positive, that's paid out now and resets to zero.
                                   const netPaid=seedAmount-deltaAdv+deltaJam-deltaFound-deltaTrans-carryForwardDue;
                                   const runningDue=netPaid<0?Math.abs(netPaid):0;
-                                  const entry={date:BILL_DATE,companies:companiesLabel,seedAmount,deltaAdvance:deltaAdv,deltaFoundation:deltaFound,deltaTransport:deltaTrans,deltaJamma:deltaJam,carryForwardDue,netPaid,runningDue,
+                                  return {date:BILL_DATE,companies:companiesLabel,seedAmount,deltaAdvance:deltaAdv,deltaFoundation:deltaFound,deltaTransport:deltaTrans,deltaJamma:deltaJam,carryForwardDue,netPaid,runningDue,
                                     advanceUsed:cpAdvWithInt,foundationUsed:cpFoundation,transportUsed:cpTransport,jammaUsed:cpJammaWithInt};
-                                  updateSO({...so, settlementHistory:[...history, entry]});
                                 };
                                 return (
                                 <div style={{marginBottom:8}}>
@@ -3771,8 +3770,10 @@ export default function App() {
                                           {/* Checkbox + company name */}
                                           <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>{
                                             const willBeSettled=!isSettled;
-                                            setSettledVars(isSettled?settledVars.filter(x=>!vars.includes(x)):[...new Set([...settledVars,...vars])]);
-                                            if(willBeSettled) addSettlementEntry(company,amt);
+                                            const newSettledVars = isSettled?settledVars.filter(x=>!vars.includes(x)):[...new Set([...settledVars,...vars])];
+                                            const update = {...so, _settledVars: newSettledVars};
+                                            if(willBeSettled) update.settlementHistory = [...history, buildSettlementEntry(company,amt)];
+                                            updateSO(update);
                                           }}>
                                             <div style={{width:18,height:18,borderRadius:3,border:"2px solid "+(isSettled?"#2d6a2d":"#aaa"),background:isSettled?"#2d6a2d":"#fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:12,fontWeight:700,flexShrink:0}}>{isSettled?"✔":""}</div>
                                             <div>
@@ -3809,8 +3810,9 @@ export default function App() {
                                     <button onClick={()=>{
                                       const remaining=companyEntries.filter(([c,vs])=>!vs.every(v=>settledVars.includes(v)));
                                       const combinedAmt=remaining.reduce((s,[c,vs])=>s+vs.reduce((ss,v)=>ss+(so.growers||[]).filter(g=>g.variety===v&&g.result==="Pass").reduce((sss,g)=>sss+(parseFloat(g.packets)||0)*(getSubOrgVarietyRate(v)||parseFloat(g.rate)||0),0),0),0);
-                                      setSettledVars(paidVars);
-                                      if(remaining.length>0) addSettlementEntry(remaining.map(([c])=>c).join(", "),combinedAmt);
+                                      const update = {...so, _settledVars: paidVars};
+                                      if(remaining.length>0) update.settlementHistory = [...history, buildSettlementEntry(remaining.map(([c])=>c).join(", "),combinedAmt)];
+                                      updateSO(update);
                                     }} style={{background:"#2d6a2d",color:"#fff",border:"none",borderRadius:5,padding:"5px 12px",fontSize:12,cursor:"pointer"}}>✔ All Settled</button>
                                     <button onClick={()=>setSettledVars([])} style={{background:"#fff",color:"#555",border:"1px solid #ccc",borderRadius:5,padding:"5px 12px",fontSize:12,cursor:"pointer"}}>☐ All To Pay</button>
                                   </div>
