@@ -1,3 +1,4 @@
+// App build: 2026-07-27-shared-farmer-balance-calculation — dashboard and bill use identical totals
 // App build: 2026-07-25-verify-dashboard-balance — village x company matrix uses paid-only crop value
 // App build: 2026-07-24-force-rebuild — company grouping, minus-sign due amounts, single-color TO PAY rows
 // FIXED: calcCompoundInterest global scope + Growers Telugu print only — 2026-07-16
@@ -99,6 +100,272 @@ function calcCompoundInterest(amount, rate, fromDate, billDate) {
   }
 }
 
+
+// Single source of truth for farmer bill/dashboard amounts.
+// Both BillPreview and Dashboard must call this helper so their balances always match.
+function calculateFarmerFinancials(
+  farmer,
+  {
+    isVarietyPaid = () => true,
+    getVarietyBillDate = () => BILL_DATE,
+    getVarietyRate = () => null,
+    getVarietyType = () => null,
+  } = {}
+) {
+  const advBillDateFor = (advance) => {
+    const paidDates = (farmer.crops || [])
+      .filter(c => c.result === "Pass" && isVarietyPaid(c.variety))
+      .map(c => getVarietyBillDate(c.variety))
+      .filter(Boolean);
+
+    return advance.tillDate ||
+      (paidDates.length > 0
+        ? paidDates.reduce((earliest, date) => earliest < date ? earliest : date)
+        : BILL_DATE);
+  };
+
+  // Resolve advance carry-forward chains. Only the last entry in each chain
+  // contributes to the final settlement balance.
+  const rawAdvances = farmer.advances || [];
+  const advanceIdToIndex = {};
+  rawAdvances.forEach((advance, index) => {
+    if (advance.cfId) advanceIdToIndex[advance.cfId] = index;
+  });
+
+  const resolvedAdvances = {};
+  let pendingAdvanceIndexes = rawAdvances.map((_, index) => index);
+
+  for (
+    let pass = 0;
+    pass < rawAdvances.length + 1 && pendingAdvanceIndexes.length > 0;
+    pass++
+  ) {
+    const stillPending = [];
+
+    pendingAdvanceIndexes.forEach(index => {
+      const advance = rawAdvances[index];
+      const sourceIndex = advance.carryForwardFrom
+        ? advanceIdToIndex[advance.carryForwardFrom]
+        : undefined;
+
+      if (
+        advance.carryForwardFrom &&
+        sourceIndex !== undefined &&
+        !resolvedAdvances[sourceIndex]
+      ) {
+        stillPending.push(index);
+        return;
+      }
+
+      const effectiveAmount =
+        sourceIndex !== undefined && resolvedAdvances[sourceIndex]
+          ? resolvedAdvances[sourceIndex].total
+          : (parseFloat(advance.amount) || 0);
+
+      const billDate = advBillDateFor(advance);
+      const { days, interest } =
+        (advance.compound ? calcCompoundInterest : calcInterest)(
+          effectiveAmount,
+          parseFloat(advance.interestRate) || 0,
+          advance.date,
+          billDate
+        );
+
+      resolvedAdvances[index] = {
+        ...advance,
+        amount: effectiveAmount,
+        days,
+        interest,
+        total: effectiveAmount + interest,
+      };
+    });
+
+    pendingAdvanceIndexes = stillPending;
+  }
+
+  const advCalc = rawAdvances.map((advance, index) =>
+    resolvedAdvances[index] || {
+      ...advance,
+      amount: parseFloat(advance.amount) || 0,
+      days: 0,
+      interest: 0,
+      total: parseFloat(advance.amount) || 0,
+    }
+  );
+
+  const finalAdvances = advCalc.filter(advance => {
+    if (!advance.cfId) return true;
+    return !advCalc.some(next => next.carryForwardFrom === advance.cfId);
+  });
+
+  const totalAdv = finalAdvances.reduce(
+    (sum, advance) => sum + (parseFloat(advance.amount) || 0),
+    0
+  );
+  const totalAdvInt = finalAdvances.reduce(
+    (sum, advance) => sum + (parseFloat(advance.interest) || 0),
+    0
+  );
+  const totalAdvWithInt = totalAdv + totalAdvInt;
+
+  // Use exactly the same effective rate/status rules everywhere.
+  const cropsCalc = (farmer.crops || []).map(crop => {
+    const area = parseFloat(crop.area) || 0;
+    const quantity = parseFloat(crop.quantity) || 0;
+    const paid = isVarietyPaid(crop.variety);
+    const rate =
+      crop.rateOverride === true
+        ? (parseFloat(crop.ratePerUnit) || 0)
+        : (getVarietyRate(crop.variety) ||
+          (parseFloat(crop.ratePerUnit) || 0));
+    const type = getVarietyType(crop.variety) || crop.cropType || "KMS";
+    const passed = crop.result === "Pass";
+    const paidPass = passed && paid;
+    const fullValue = passed ? quantity * rate : 0;
+
+    return {
+      ...crop,
+      cropType: type,
+      rateUsed: rate,
+      fullValue,
+      value: paidPass ? fullValue : 0,
+      pendingValue: passed && !paid ? fullValue : 0,
+      foundation: area * FOUNDATION_RATE,
+      transportation: quantity,
+      vBillDate: getVarietyBillDate(crop.variety),
+      vPaid: paid,
+    };
+  });
+
+  const fullCropValue = cropsCalc.reduce(
+    (sum, crop) => sum + crop.fullValue,
+    0
+  );
+  const totalCropValue = cropsCalc.reduce(
+    (sum, crop) => sum + crop.value,
+    0
+  );
+  const totalPendingCropValue = cropsCalc.reduce(
+    (sum, crop) => sum + crop.pendingValue,
+    0
+  );
+  const totalFoundation = cropsCalc.reduce(
+    (sum, crop) => sum + crop.foundation,
+    0
+  );
+  const totalTransport = cropsCalc.reduce(
+    (sum, crop) => sum + crop.transportation,
+    0
+  );
+
+  // Resolve Jamma carry-forward chains using the same rules as the bill.
+  const rawJamma = farmer.jammaEnabled ? (farmer.jammaEntries || []) : [];
+  const jammaIdToIndex = {};
+  rawJamma.forEach((entry, index) => {
+    if (entry.cfId) jammaIdToIndex[entry.cfId] = index;
+  });
+
+  const resolvedJamma = {};
+  let pendingJammaIndexes = rawJamma.map((_, index) => index);
+
+  for (
+    let pass = 0;
+    pass < rawJamma.length + 1 && pendingJammaIndexes.length > 0;
+    pass++
+  ) {
+    const stillPending = [];
+
+    pendingJammaIndexes.forEach(index => {
+      const entry = rawJamma[index];
+      const sourceIndex = entry.carryForwardFrom
+        ? jammaIdToIndex[entry.carryForwardFrom]
+        : undefined;
+
+      if (
+        entry.carryForwardFrom &&
+        sourceIndex !== undefined &&
+        !resolvedJamma[sourceIndex]
+      ) {
+        stillPending.push(index);
+        return;
+      }
+
+      const effectiveAmount =
+        sourceIndex !== undefined && resolvedJamma[sourceIndex]
+          ? resolvedJamma[sourceIndex].total
+          : (parseFloat(entry.amount) || 0);
+
+      const billDate = entry.tillDate || BILL_DATE;
+      const { days, interest } = calcInterest(
+        effectiveAmount,
+        parseFloat(entry.interestRate) || 0,
+        entry.date || BILL_DATE,
+        billDate
+      );
+
+      resolvedJamma[index] = {
+        ...entry,
+        amount: effectiveAmount,
+        days,
+        interest,
+        total: effectiveAmount + interest,
+      };
+    });
+
+    pendingJammaIndexes = stillPending;
+  }
+
+  const jammaCalc = rawJamma.map((entry, index) =>
+    resolvedJamma[index] || {
+      ...entry,
+      amount: parseFloat(entry.amount) || 0,
+      days: 0,
+      interest: 0,
+      total: parseFloat(entry.amount) || 0,
+    }
+  );
+
+  const finalJamma = jammaCalc.filter(entry => {
+    if (!entry.cfId) return true;
+    return !jammaCalc.some(next => next.carryForwardFrom === entry.cfId);
+  });
+
+  const totalJamma = finalJamma.reduce(
+    (sum, entry) => sum + (parseFloat(entry.amount) || 0),
+    0
+  );
+  const totalJammaInt = finalJamma.reduce(
+    (sum, entry) => sum + (parseFloat(entry.interest) || 0),
+    0
+  );
+  const totalJammaWithInt = totalJamma + totalJammaInt;
+
+  const balance =
+    totalCropValue -
+    totalAdvWithInt +
+    totalJammaWithInt -
+    totalFoundation -
+    totalTransport;
+
+  return {
+    advCalc,
+    totalAdv,
+    totalAdvInt,
+    totalAdvWithInt,
+    cropsCalc,
+    fullCropValue,
+    totalCropValue,
+    totalPendingCropValue,
+    totalFoundation,
+    totalTransport,
+    jammaCalc,
+    totalJamma,
+    totalJammaInt,
+    totalJammaWithInt,
+    balance,
+  };
+}
+
 function printBill(elementId, filename) {
   const el = document.getElementById(elementId);
   if (!el) { alert("Please go to the Preview tab first, then click Print."); return; }
@@ -146,93 +413,26 @@ function BillPreview({ farmer, varietySettings, getVarietyBillDate, isVarietyPai
   const _getVarietyType = getVarietyType || (() => null);
 
   const billNo = `BILL-${farmer.farmerNo || farmer.id || "001"}-2026`;
-  const advBillDateFor = (a) => {
-    // Use earliest paid variety bill date for advance interest
-    const paidDates = (farmer.crops||[]).filter(c=>c.result==="Pass"&&_isVarietyPaid(c.variety)).map(c=>_getVarietyBillDate(c.variety));
-    return a.tillDate || (paidDates.length > 0 ? paidDates.reduce((a,b)=>a<b?a:b) : BILL_DATE);
-  };
-  // Resolve advances in dependency order so a carry-forward entry's "amount" is always
-  // derived live from its source advance's current total — never a stale snapshot.
-  // This keeps Part totals tallying even if the source advance is edited afterward.
-  const rawAdvances = farmer.advances || [];
-  const cfIdToIdx = {};
-  rawAdvances.forEach((a, idx) => { if (a.cfId) cfIdToIdx[a.cfId] = idx; });
-  const resolved = {};
-  let pending = rawAdvances.map((_, idx) => idx);
-  for (let pass = 0; pass < rawAdvances.length + 1 && pending.length > 0; pass++) {
-    const stillPending = [];
-    pending.forEach(idx => {
-      const a = rawAdvances[idx];
-      const srcIdx = a.carryForwardFrom ? cfIdToIdx[a.carryForwardFrom] : undefined;
-      if (a.carryForwardFrom && srcIdx !== undefined && !resolved[srcIdx]) {
-        stillPending.push(idx); // source not resolved yet — retry next pass
-        return;
-      }
-      const effectiveAmount = (srcIdx !== undefined && resolved[srcIdx]) ? resolved[srcIdx].total : (parseFloat(a.amount) || 0);
-      const advBillDate = advBillDateFor(a);
-      const { days, interest } = (a.compound?calcCompoundInterest:calcInterest)(effectiveAmount, a.interestRate, a.date, advBillDate);
-      resolved[idx] = { ...a, amount: effectiveAmount, days, interest, total: effectiveAmount + interest };
-    });
-    pending = stillPending;
-  }
-  const advCalc = rawAdvances.map((a, idx) => resolved[idx] || { ...a, amount: parseFloat(a.amount)||0, days: 0, interest: 0, total: parseFloat(a.amount)||0 });
-  // For settlement summary — only count the LAST entry of each carry-forward chain
-  // An advance is intermediate if a later entry was explicitly carried forward from it (linked via cfId)
-  const isIntermediate = (a) => {
-    if (!a.cfId) return false;
-    return advCalc.some(b => b.carryForwardFrom === a.cfId);
-  };
-  const finalAdvances = advCalc.filter(a => !isIntermediate(a));
-  const totalAdv = finalAdvances.reduce((s, a) => s + a.amount, 0);
-  const totalAdvInt = finalAdvances.reduce((s, a) => s + a.interest, 0);
-  const totalAdvWithInt = totalAdv + totalAdvInt;
-
-  const cropsCalc = (farmer.crops || []).map(c => {
-    const area = parseFloat(c.area) || 0;
-    const qty = parseFloat(c.quantity) || 0;
-    const vBillDate = _getVarietyBillDate(c.variety);
-    const vPaid = _isVarietyPaid(c.variety);
-    const vRate = (c.rateOverride === true) ? (parseFloat(c.ratePerUnit) || 0) : (_getVarietyRate(c.variety) || (parseFloat(c.ratePerUnit) || 0));
-    const vType = _getVarietyType(c.variety) || c.cropType || "KMS";
-    const isPaidPass = c.result === "Pass" && vPaid;
-    return { ...c, cropType: vType, rateUsed: vRate, value: isPaidPass ? qty * vRate : 0, pendingValue: (c.result === "Pass" && !vPaid) ? qty * vRate : 0, foundation: area * FOUNDATION_RATE, transportation: qty, vBillDate, vPaid };
+  const {
+    advCalc,
+    totalAdv,
+    totalAdvInt,
+    totalAdvWithInt,
+    cropsCalc,
+    totalCropValue,
+    totalFoundation,
+    totalTransport,
+    jammaCalc,
+    totalJamma,
+    totalJammaInt,
+    totalJammaWithInt,
+    balance,
+  } = calculateFarmerFinancials(farmer, {
+    isVarietyPaid: _isVarietyPaid,
+    getVarietyBillDate: _getVarietyBillDate,
+    getVarietyRate: _getVarietyRate,
+    getVarietyType: _getVarietyType,
   });
-  const totalCropValue = cropsCalc.reduce((s, c) => s + c.value, 0);
-  const totalFoundation = cropsCalc.reduce((s, c) => s + c.foundation, 0);
-  const totalTransport = cropsCalc.reduce((s, c) => s + c.transportation, 0);
-
-  const rawJamma = farmer.jammaEnabled ? (farmer.jammaEntries || []) : [];
-  const jamCfIdToIdx = {};
-  rawJamma.forEach((j, idx) => { if (j.cfId) jamCfIdToIdx[j.cfId] = idx; });
-  const jamResolved = {};
-  let jamPending = rawJamma.map((_, idx) => idx);
-  for (let pass = 0; pass < rawJamma.length + 1 && jamPending.length > 0; pass++) {
-    const stillPending = [];
-    jamPending.forEach(idx => {
-      const j = rawJamma[idx];
-      const srcIdx = j.carryForwardFrom ? jamCfIdToIdx[j.carryForwardFrom] : undefined;
-      if (j.carryForwardFrom && srcIdx !== undefined && !jamResolved[srcIdx]) {
-        stillPending.push(idx); // source not resolved yet — retry next pass
-        return;
-      }
-      const effectiveAmount = (srcIdx !== undefined && jamResolved[srcIdx]) ? jamResolved[srcIdx].total : (parseFloat(j.amount) || 0);
-      const jamBillDate = j.tillDate || BILL_DATE;
-      const { days, interest } = calcInterest(effectiveAmount, parseFloat(j.interestRate) || 0, j.date || BILL_DATE, jamBillDate);
-      jamResolved[idx] = { ...j, amount: effectiveAmount, days, interest, total: effectiveAmount + interest };
-    });
-    jamPending = stillPending;
-  }
-  const jammaCalc = rawJamma.map((j, idx) => jamResolved[idx] || { ...j, amount: parseFloat(j.amount)||0, days: 0, interest: 0, total: parseFloat(j.amount)||0 });
-  // Settlement summary — only count the LAST entry of each Jamma carry-forward chain
-  const isJammaIntermediate = (j) => {
-    if (!j.cfId) return false;
-    return jammaCalc.some(k => k.carryForwardFrom === j.cfId);
-  };
-  const finalJamma = jammaCalc.filter(j => !isJammaIntermediate(j));
-  const totalJamma = finalJamma.reduce((s, j) => s + (parseFloat(j.amount) || 0), 0);
-  const totalJammaInt = finalJamma.reduce((s, j) => s + j.interest, 0);
-  const totalJammaWithInt = totalJamma + totalJammaInt;
-  const balance = totalCropValue - totalAdvWithInt + totalJammaWithInt - totalFoundation - totalTransport;
 
   const TH = ({ ch }) => <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 600, whiteSpace: "nowrap", fontSize: 11 }}>{ch}</th>;
   const TD = ({ ch, s }) => <td style={{ padding: "4px 6px", textAlign: "center", whiteSpace: "nowrap", fontSize: 11, ...s }}>{ch}</td>;
@@ -4046,22 +4246,21 @@ export default function App() {
       {mode==="dashboard"&&(()=>{
         const allF=farmers||[];
         const fStats=allF.map(f=>{
-          const advWI=(f.advances||[]).reduce((s,a)=>{const{interest}=(a.compound?calcCompoundInterest:calcInterest)(a.amount,a.interestRate,a.date);return s+a.amount+interest;},0);
-          // value = full crop value regardless of company payment status (for "Total Crop Value" overview)
-          // paidValue = only counts if the company has actually paid for that variety — this is what real bills use for balance
-          const cCalc=(f.crops||[]).map(c=>{
-            const area=parseFloat(c.area)||0,qty=parseFloat(c.quantity)||0;
-            const isPaidPass=c.result==="Pass"&&isVarietyPaid(c.variety);
-            const fullValue=c.result==="Pass"?qty*(parseFloat(c.ratePerUnit)||0):0;
-            return{value:fullValue,paidValue:isPaidPass?fullValue:0,foundation:area*FOUNDATION_RATE,transport:qty};
+          // Use the exact same calculation as the farmer bill.
+          const financials=calculateFarmerFinancials(f,{
+            isVarietyPaid,
+            getVarietyBillDate,
+            getVarietyRate,
+            getVarietyType,
           });
-          const cropVal=cCalc.reduce((s,c)=>s+c.value,0);
-          const paidCropVal=cCalc.reduce((s,c)=>s+c.paidValue,0);
-          const found=cCalc.reduce((s,c)=>s+c.foundation,0);
-          const trans=cCalc.reduce((s,c)=>s+c.transport,0);
-          const jamWI=(f.jammaEnabled?(f.jammaEntries||[]):[]).reduce((s,j)=>{const{interest}=calcInterest(parseFloat(j.amount)||0,parseFloat(j.interestRate)||0,j.date||BILL_DATE);return s+(parseFloat(j.amount)||0)+interest;},0);
-          const bal=paidCropVal-advWI+jamWI-found-trans;
-          return{...f,balance:bal,cropVal,paidCropVal,advWI};
+          return{
+            ...f,
+            balance:financials.balance,
+            cropVal:financials.fullCropValue,
+            paidCropVal:financials.totalCropValue,
+            advWI:financials.totalAdvWithInt,
+            financials,
+          };
         });
         const totalPayable=fStats.filter(f=>f.balance>0).reduce((s,f)=>s+f.balance,0);
         const totalDue=fStats.filter(f=>f.balance<0).reduce((s,f)=>s+Math.abs(f.balance),0);
@@ -4082,7 +4281,9 @@ export default function App() {
             if(c.result!=="Pass"||!c.variety) return;
             const company=getVarietyCompany(c.variety);
             const qty=parseFloat(c.quantity)||0;
-            const rate=getVarietyRate(c.variety)||0;
+            const rate=(c.rateOverride===true)
+              ? (parseFloat(c.ratePerUnit)||0)
+              : (getVarietyRate(c.variety)||(parseFloat(c.ratePerUnit)||0));
             const value=qty*rate;
             const paid=isVarietyPaid(c.variety);
             if(!vcMatrix[company]) vcMatrix[company]={};
@@ -4104,7 +4305,10 @@ export default function App() {
           (f.crops||[]).forEach(c=>{
             if(c.result!=="Pass"||!c.variety||!isVarietyPaid(c.variety)) return;
             const company=getVarietyCompany(c.variety);
-            const value=(parseFloat(c.quantity)||0)*(parseFloat(c.ratePerUnit)||0);
+            const rate=(c.rateOverride===true)
+              ? (parseFloat(c.ratePerUnit)||0)
+              : (getVarietyRate(c.variety)||(parseFloat(c.ratePerUnit)||0));
+            const value=(parseFloat(c.quantity)||0)*rate;
             companyShares[company]=(companyShares[company]||0)+value;
           });
           Object.entries(companyShares).forEach(([company,share])=>{
