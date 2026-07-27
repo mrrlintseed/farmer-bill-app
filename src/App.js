@@ -4064,6 +4064,56 @@ export default function App() {
         const vMap={};
         fStats.forEach(f=>{const v=f.village?.trim()||"No Village";if(!vMap[v])vMap[v]={farmers:0,payable:0,due:0,cropVal:0};vMap[v].farmers++;if(f.balance>=0)vMap[v].payable+=f.balance;else vMap[v].due+=Math.abs(f.balance);vMap[v].cropVal+=f.cropVal;});
         const villages=Object.entries(vMap).sort((a,b)=>b[1].cropVal-a[1].cropVal);
+        // Village × Company matrix — companies as rows, villages as columns
+        const vcMatrix={}; // company -> village -> {qty,toPay,pending,balPay,balDue}
+        allF.forEach(f=>{
+          const v=f.village?.trim()||"No Village";
+          (f.crops||[]).forEach(c=>{
+            if(c.result!=="Pass"||!c.variety) return;
+            const company=getVarietyCompany(c.variety);
+            const qty=parseFloat(c.quantity)||0;
+            const rate=getVarietyRate(c.variety)||0;
+            const value=qty*rate;
+            const paid=isVarietyPaid(c.variety);
+            if(!vcMatrix[company]) vcMatrix[company]={};
+            if(!vcMatrix[company][v]) vcMatrix[company][v]={qty:0,toPay:0,pending:0,balPay:0,balDue:0,payFarmers:[],dueFarmers:[]};
+            vcMatrix[company][v].qty+=qty;
+            if(paid) vcMatrix[company][v].toPay+=value; else vcMatrix[company][v].pending+=value;
+          });
+        });
+        // Prorate each farmer's overall balance (crop value net of advances/foundation/transport)
+        // across the companies they grew, by each company's share of that farmer's total crop value.
+        // This is an allocation, not a literal per-company balance — advances/deductions aren't
+        // actually tied to one company, so this spreads them proportionally to estimate cash needed.
+        fStats.forEach(f=>{
+          if(!f.cropVal || f.cropVal<=0) return; // no basis to allocate deductions against
+          const v=f.village?.trim()||"No Village";
+          const companyShares={};
+          (f.crops||[]).forEach(c=>{
+            if(c.result!=="Pass"||!c.variety) return;
+            const company=getVarietyCompany(c.variety);
+            const value=(parseFloat(c.quantity)||0)*(parseFloat(c.ratePerUnit)||0);
+            companyShares[company]=(companyShares[company]||0)+value;
+          });
+          Object.entries(companyShares).forEach(([company,share])=>{
+            const proportion=share/f.cropVal;
+            const allocated=f.balance*proportion;
+            if(!vcMatrix[company]) vcMatrix[company]={};
+            if(!vcMatrix[company][v]) vcMatrix[company][v]={qty:0,toPay:0,pending:0,balPay:0,balDue:0,payFarmers:[],dueFarmers:[]};
+            const entry={farmerNo:f.farmerNo,name:f.name,fatherName:f.fatherName,amt:0,farmer:f};
+            if(allocated>=0) { vcMatrix[company][v].balPay+=allocated; vcMatrix[company][v].payFarmers.push({...entry,amt:allocated}); }
+            else { vcMatrix[company][v].balDue+=Math.abs(allocated); vcMatrix[company][v].dueFarmers.push({...entry,amt:Math.abs(allocated)}); }
+          });
+        });
+        const matrixCompanies=Object.keys(vcMatrix).sort();
+        const matrixVillages=[...new Set(allF.map(f=>f.village?.trim()||"No Village"))].sort();
+        const villagePayable={};
+        const villageDue={};
+        fStats.forEach(f=>{
+          const v=f.village?.trim()||"No Village";
+          if(f.balance>0) villagePayable[v]=(villagePayable[v]||0)+f.balance;
+          else if(f.balance<0) villageDue[v]=(villageDue[v]||0)+Math.abs(f.balance);
+        });
         const soStats=subOrgs.map(so=>{
           const advWI=(so.advances||[]).reduce((s,a)=>{const{interest}=(a.compound?calcCompoundInterest:calcInterest)(parseFloat(a.amount)||0,parseFloat(a.interestRate)||0,a.date);return s+(parseFloat(a.amount)||0)+interest;},0);
           const g=so.growers||[];
@@ -4144,6 +4194,13 @@ export default function App() {
         const openSubOrgsDrill=()=>openDrill("Sub-Organizer Summary","🏢","#2d5a8a",
           soStats.map((so,i)=>({label:"#"+(so.accNo||"—")+" "+(so.name||"Sub-Org"),sub:(so.village||"—")+" · "+so.growerCount+" growers ("+so.passCount+" passed)",value:(so.balance>=0?"Pay ":"Due ")+fmt(so.balance),onClick:()=>goToSubOrg(i)})),
           "No sub-organizers added yet");
+        const openCompanyVillageDrill=(company,village,type)=>{
+          const cell=vcMatrix[company]?.[village];
+          const list=(type==="pay"?cell?.payFarmers:cell?.dueFarmers)||[];
+          openDrill(company+" — "+village+" — "+(type==="pay"?"Balance to Pay":"Balance Due"),type==="pay"?"💰":"📥",type==="pay"?"#1a6a1a":"#c0392b",
+            [...list].sort((a,b)=>b.amt-a.amt).map(f=>({label:"#"+(f.farmerNo||"?")+" "+(f.name||""),sub:"Father: "+(f.fatherName||"—"),value:fmt(f.amt),onClick:()=>goToFarmer(f.farmer)})),
+            "No farmers found");
+        };
         const Card=({icon,label,value,sub,color,onClick})=>{
           const [hover,setHover]=useState(false);
           return (
@@ -4174,6 +4231,89 @@ export default function App() {
               <Card icon="✅" label="Passed Crops" value={passC+" crops"} sub={allCrops.length>0?Math.round(passC/allCrops.length*100)+"% of all crops":"—"} color="#2d6a2d" onClick={()=>openPassFailDrill("Pass")} />
               <Card icon="❌" label="Failed Crops" value={failC+" crops"} sub={allCrops.length>0?Math.round(failC/allCrops.length*100)+"% of all crops":"—"} color="#e74c3c" onClick={()=>openPassFailDrill("Fail")} />
               <Card icon="🏢" label="Sub-Organizers" value={soStats.length+" sub-orgs"} sub={soStats.reduce((s,so)=>s+so.growerCount,0)+" growers"} color="#2d5a8a" onClick={openSubOrgsDrill} />
+            </div>
+
+            {/* ── VILLAGE × COMPANY MATRIX ── */}
+            <div style={{background:"#fff",borderRadius:10,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
+              <div style={{fontWeight:700,fontSize:13,color:"#1a4a1a",marginBottom:4}}>🏭 Company × Village — Quantity &amp; Seed Value</div>
+              <div style={{fontSize:11,color:"#888",marginBottom:10}}>Each village has 3 columns: Qty (pass quantity, plus seed value still pending from the company), Balance to Pay (farmers owed money for that company here), and Balance Due (farmers who owe money back). The ₹ per farmer is an estimate — it splits each farmer's overall balance across companies by their share of that farmer's crop value, since advances and deductions aren't actually tied to one company. Treat it as a planning guide for who to visit and roughly how much to bring, not an exact per-company ledger.</div>
+              <div style={{fontSize:10,color:"#aaa",marginBottom:10,marginTop:-6}}>Rows sum to the exact village Balance to Pay / Due above.</div>
+              {matrixCompanies.length===0 ? (
+                <div style={{color:"#aaa",fontSize:12,textAlign:"center",padding:20}}>No passed crops recorded yet</div>
+              ) : (
+                <div style={{overflowX:"auto"}}>
+                  <table style={{borderCollapse:"collapse",fontSize:11,minWidth:"100%"}}>
+                    <thead>
+                      <tr>
+                        <th rowSpan={2} style={{position:"sticky",left:0,background:"#1a2a4a",color:"#fff",padding:"6px 10px",textAlign:"left",zIndex:1,minWidth:130,verticalAlign:"bottom"}}>Company</th>
+                        {matrixVillages.map(v=>(
+                          <th key={v} colSpan={3} style={{background:"#1a2a4a",color:"#fff",padding:"6px 8px",textAlign:"center",whiteSpace:"nowrap",borderLeft:"2px solid #2a3a5a"}}>{v}</th>
+                        ))}
+                        <th rowSpan={2} style={{position:"sticky",right:0,background:"#0d1a33",color:"#fff",padding:"6px 10px",textAlign:"center",minWidth:120,zIndex:1,verticalAlign:"bottom"}}>Total (All Villages)</th>
+                      </tr>
+                      <tr>
+                        {matrixVillages.map(v=>(
+                          <React.Fragment key={v}>
+                            <th style={{background:"#243a63",color:"#cfe0ff",padding:"4px 6px",fontWeight:600,fontSize:10,minWidth:70,borderLeft:"2px solid #2a3a5a"}}>Qty</th>
+                            <th style={{background:"#1a6a1a",color:"#fff",padding:"4px 6px",fontWeight:600,fontSize:10,minWidth:130}}>Balance to Pay</th>
+                            <th style={{background:"#8a2a2a",color:"#fff",padding:"4px 6px",fontWeight:600,fontSize:10,minWidth:130}}>Balance Due</th>
+                          </React.Fragment>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {matrixCompanies.map((company,ci)=>{
+                        const companyTotalPay=matrixVillages.reduce((s,v)=>s+(vcMatrix[company]?.[v]?.balPay||0),0);
+                        const companyTotalDue=matrixVillages.reduce((s,v)=>s+(vcMatrix[company]?.[v]?.balDue||0),0);
+                        return (
+                        <tr key={company} style={{background:ci%2===0?"#fff":"#f9fdf9",borderTop:"1px solid #eee"}}>
+                          <td style={{position:"sticky",left:0,background:ci%2===0?"#fff":"#f9fdf9",padding:"6px 10px",fontWeight:600,color:"#333",whiteSpace:"nowrap"}}>{company}</td>
+                          {matrixVillages.map(v=>{
+                            const cell=vcMatrix[company]?.[v];
+                            if(!cell || cell.qty===0) return (
+                              <React.Fragment key={v}>
+                                <td style={{padding:"6px 6px",textAlign:"center",color:"#ccc",borderLeft:"2px solid #eee"}}>—</td>
+                                <td style={{padding:"6px 6px",textAlign:"center",color:"#ccc"}}>—</td>
+                                <td style={{padding:"6px 6px",textAlign:"center",color:"#ccc"}}>—</td>
+                              </React.Fragment>
+                            );
+                            return (
+                              <React.Fragment key={v}>
+                                <td style={{padding:"6px 6px",textAlign:"center",borderLeft:"2px solid #eee",verticalAlign:"top"}}>
+                                  <div style={{fontWeight:600}}>{cell.qty.toLocaleString("en-IN")}</div>
+                                  {cell.pending>0 && <div style={{color:"#856404",fontSize:9}}>Pend ₹{Math.round(cell.pending).toLocaleString("en-IN")}</div>}
+                                </td>
+                                <td onClick={cell.payFarmers.length>0?()=>openCompanyVillageDrill(company,v,"pay"):undefined} style={{padding:"6px 6px",textAlign:"center",background:"#e8f5e9",cursor:cell.payFarmers.length>0?"pointer":"default"}}>
+                                  {cell.payFarmers.length===0 ? <span style={{color:"#ccc"}}>—</span> : (
+                                    <>
+                                      <div style={{fontWeight:800,color:"#1a6a1a"}}>₹{Math.round(cell.balPay).toLocaleString("en-IN")}</div>
+                                      <div style={{fontSize:10,color:"#2d6a2d",fontWeight:600,textDecoration:"underline"}}>{cell.payFarmers.length}F</div>
+                                    </>
+                                  )}
+                                </td>
+                                <td onClick={cell.dueFarmers.length>0?()=>openCompanyVillageDrill(company,v,"due"):undefined} style={{padding:"6px 6px",textAlign:"center",background:"#fdecea",cursor:cell.dueFarmers.length>0?"pointer":"default"}}>
+                                  {cell.dueFarmers.length===0 ? <span style={{color:"#ccc"}}>—</span> : (
+                                    <>
+                                      <div style={{fontWeight:800,color:"#c0392b"}}>₹{Math.round(cell.balDue).toLocaleString("en-IN")}</div>
+                                      <div style={{fontSize:10,color:"#c0392b",fontWeight:600,textDecoration:"underline"}}>{cell.dueFarmers.length}F</div>
+                                    </>
+                                  )}
+                                </td>
+                              </React.Fragment>
+                            );
+                          })}
+                          <td style={{position:"sticky",right:0,background:ci%2===0?"#f0f0f0":"#e8e8e8",padding:"6px 10px",textAlign:"center"}}>
+                            {companyTotalPay>0 && <div style={{color:"#1a6a1a",fontSize:11,fontWeight:800}}>💰 ₹{Math.round(companyTotalPay).toLocaleString("en-IN")}</div>}
+                            {companyTotalDue>0 && <div style={{color:"#c0392b",fontSize:11,fontWeight:800}}>📥 ₹{Math.round(companyTotalDue).toLocaleString("en-IN")}</div>}
+                            {companyTotalPay===0 && companyTotalDue===0 && <span style={{color:"#ccc"}}>—</span>}
+                          </td>
+                        </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
 
             {/* ── DRILL-DOWN DRAWER ── */}
