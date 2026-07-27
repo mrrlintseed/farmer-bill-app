@@ -4204,10 +4204,14 @@ export default function App() {
         allF.forEach(f=>(f.crops||[]).forEach(c=>{if(!c.variety)return;if(!varietyMap[c.variety])varietyMap[c.variety]={qty:0,farmers:new Set()};if(c.result==="Pass"){varietyMap[c.variety].qty+=parseFloat(c.quantity)||0;varietyMap[c.variety].farmers.add(f);}}));
         const varietyList=Object.entries(varietyMap).sort((a,b)=>b[1].qty-a[1].qty);
         const openVarietyFarmersDrill=(variety)=>{
-          const rows=allF.map(f=>{const q=(f.crops||[]).filter(c=>c.variety===variety&&c.result==="Pass").reduce((s,c)=>s+(parseFloat(c.quantity)||0),0);return{f,q};}).filter(r=>r.q>0).sort((a,b)=>b.q-a.q);
-          openDrill(variety+" — Farmers","🌱","#0e7c6b",
-            rows.map(({f,q})=>({label:"#"+(f.farmerNo||"?")+" "+(f.name||""),sub:f.village||"—",value:q.toLocaleString("en-IN")+" pkts",onClick:()=>goToFarmer(f)})),
-            "No farmers growing this variety");
+          const rows=allF.map(f=>{const q=(f.crops||[]).filter(c=>c.variety===variety&&c.result==="Pass").reduce((s,c)=>s+(parseFloat(c.quantity)||0),0);return{f,q};}).filter(r=>r.q>0);
+          const byVillage={};
+          rows.forEach(({f,q})=>{const v=f.village?.trim()||"No Village";if(!byVillage[v])byVillage[v]={total:0,farmers:[]};byVillage[v].total+=q;byVillage[v].farmers.push({f,q});});
+          const groups=Object.entries(byVillage).sort((a,b)=>a[0].localeCompare(b[0])).map(([v,d])=>({
+            title:v+" · "+d.total.toLocaleString("en-IN")+" pkts ("+d.farmers.length+" farmer"+(d.farmers.length===1?"":"s")+")",
+            rows:d.farmers.sort((a,b)=>b.q-a.q).map(({f,q})=>({label:"#"+(f.farmerNo||"?")+" "+(f.name||""),value:q.toLocaleString("en-IN")+" pkts",onClick:()=>goToFarmer(f)}))
+          }));
+          openGroupedDrill(variety+" — Farmers by Village","🌱","#0e7c6b",groups,"No farmers growing this variety");
         };
         const openVarietiesDrill=()=>openDrill("Variety-wise Quantity","🌱","#0e7c6b",
           varietyList.map(([v,d])=>({label:v,sub:d.farmers.size+" farmers",value:d.qty.toLocaleString("en-IN")+" pkts",onClick:()=>openVarietyFarmersDrill(v)})),
