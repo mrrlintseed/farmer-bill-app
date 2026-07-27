@@ -1,3 +1,4 @@
+// App build: 2026-07-25-verify-dashboard-balance — village x company matrix uses paid-only crop value
 // App build: 2026-07-24-force-rebuild — company grouping, minus-sign due amounts, single-color TO PAY rows
 // FIXED: calcCompoundInterest global scope + Growers Telugu print only — 2026-07-16
 // FIXED BUILD: Growers-tab Telugu print only + Babel syntax repair — 2026-07-16
@@ -4073,7 +4074,8 @@ export default function App() {
         fStats.forEach(f=>{const v=f.village?.trim()||"No Village";if(!vMap[v])vMap[v]={farmers:0,payable:0,due:0,cropVal:0};vMap[v].farmers++;if(f.balance>=0)vMap[v].payable+=f.balance;else vMap[v].due+=Math.abs(f.balance);vMap[v].cropVal+=f.cropVal;});
         const villages=Object.entries(vMap).sort((a,b)=>b[1].cropVal-a[1].cropVal);
         // Village × Company matrix — companies as rows, villages as columns
-        const vcMatrix={}; // company -> village -> {qty,toPay,pending,balPay,balDue}
+        const vcMatrix={}; // company -> village -> {qty,toPay,pending,balPay,balDue,pendingPay,pendingDue}
+        const emptyCell=()=>({qty:0,toPay:0,pending:0,balPay:0,balDue:0,pendingPay:0,pendingDue:0,payFarmers:[],dueFarmers:[]});
         allF.forEach(f=>{
           const v=f.village?.trim()||"No Village";
           (f.crops||[]).forEach(c=>{
@@ -4084,7 +4086,7 @@ export default function App() {
             const value=qty*rate;
             const paid=isVarietyPaid(c.variety);
             if(!vcMatrix[company]) vcMatrix[company]={};
-            if(!vcMatrix[company][v]) vcMatrix[company][v]={qty:0,toPay:0,pending:0,balPay:0,balDue:0,payFarmers:[],dueFarmers:[]};
+            if(!vcMatrix[company][v]) vcMatrix[company][v]=emptyCell();
             vcMatrix[company][v].qty+=qty;
             if(paid) vcMatrix[company][v].toPay+=value; else vcMatrix[company][v].pending+=value;
           });
@@ -4109,10 +4111,25 @@ export default function App() {
             const proportion=share/f.paidCropVal;
             const allocated=f.balance*proportion;
             if(!vcMatrix[company]) vcMatrix[company]={};
-            if(!vcMatrix[company][v]) vcMatrix[company][v]={qty:0,toPay:0,pending:0,balPay:0,balDue:0,payFarmers:[],dueFarmers:[]};
+            if(!vcMatrix[company][v]) vcMatrix[company][v]=emptyCell();
             const entry={farmerNo:f.farmerNo,name:f.name,fatherName:f.fatherName,amt:0,farmer:f};
             if(allocated>=0) { vcMatrix[company][v].balPay+=allocated; vcMatrix[company][v].payFarmers.push({...entry,amt:allocated}); }
             else { vcMatrix[company][v].balDue+=Math.abs(allocated); vcMatrix[company][v].dueFarmers.push({...entry,amt:Math.abs(allocated)}); }
+          });
+        });
+        // Pending crops — money not yet paid by the company for this variety. Shown as a lighter
+        // "what it would add" figure under whichever side (Pay/Due) that farmer currently sits on,
+        // since once the company pays, it adds straight to that farmer's balance.
+        fStats.forEach(f=>{
+          const v=f.village?.trim()||"No Village";
+          (f.crops||[]).forEach(c=>{
+            if(c.result!=="Pass"||!c.variety||isVarietyPaid(c.variety)) return;
+            const company=getVarietyCompany(c.variety);
+            const value=(parseFloat(c.quantity)||0)*(getVarietyRate(c.variety)||0);
+            if(!vcMatrix[company]) vcMatrix[company]={};
+            if(!vcMatrix[company][v]) vcMatrix[company][v]=emptyCell();
+            if(f.balance>=0) vcMatrix[company][v].pendingPay+=value;
+            else vcMatrix[company][v].pendingDue+=value;
           });
         });
         const matrixCompanies=Object.keys(vcMatrix).sort();
@@ -4246,7 +4263,7 @@ export default function App() {
             {/* ── VILLAGE × COMPANY MATRIX ── */}
             <div style={{background:"#fff",borderRadius:10,padding:16,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
               <div style={{fontWeight:700,fontSize:13,color:"#1a4a1a",marginBottom:4}}>🏭 Company × Village — Quantity &amp; Seed Value</div>
-              <div style={{fontSize:11,color:"#888",marginBottom:10}}>Each village has 3 columns: Qty (pass quantity, plus seed value still pending from the company), Balance to Pay (farmers owed money for that company here), and Balance Due (farmers who owe money back). The ₹ per farmer is an estimate — it splits each farmer's overall balance across companies by their share of that farmer's crop value, since advances and deductions aren't actually tied to one company. Treat it as a planning guide for who to visit and roughly how much to bring, not an exact per-company ledger.</div>
+              <div style={{fontSize:11,color:"#888",marginBottom:10}}>Each village has 3 columns: Qty, Balance to Pay, and Balance Due. The bold ₹ is the confirmed amount (company has already paid); the lighter "Pend ₹" line below it is seed value the company hasn't paid yet — shown under whichever side that farmer currently sits on, since it would add straight to their balance once paid. Treat it as a planning guide for who to visit and roughly how much to bring, not an exact per-company ledger.</div>
               <div style={{fontSize:10,color:"#aaa",marginBottom:10,marginTop:-6}}>Rows sum to the exact village Balance to Pay / Due above.</div>
               {matrixCompanies.length===0 ? (
                 <div style={{color:"#aaa",fontSize:12,textAlign:"center",padding:20}}>No passed crops recorded yet</div>
@@ -4291,21 +4308,26 @@ export default function App() {
                               <React.Fragment key={v}>
                                 <td style={{padding:"6px 6px",textAlign:"center",borderLeft:"2px solid #eee",verticalAlign:"top"}}>
                                   <div style={{fontWeight:600}}>{cell.qty.toLocaleString("en-IN")}</div>
-                                  {cell.pending>0 && <div style={{color:"#856404",fontSize:9}}>Pend ₹{Math.round(cell.pending).toLocaleString("en-IN")}</div>}
                                 </td>
                                 <td onClick={cell.payFarmers.length>0?()=>openCompanyVillageDrill(company,v,"pay"):undefined} style={{padding:"6px 6px",textAlign:"center",background:"#e8f5e9",cursor:cell.payFarmers.length>0?"pointer":"default"}}>
-                                  {cell.payFarmers.length===0 ? <span style={{color:"#ccc"}}>—</span> : (
+                                  {cell.payFarmers.length===0 && cell.pendingPay===0 ? <span style={{color:"#ccc"}}>—</span> : (
                                     <>
-                                      <div style={{fontWeight:800,color:"#1a6a1a"}}>₹{Math.round(cell.balPay).toLocaleString("en-IN")}</div>
-                                      <div style={{fontSize:10,color:"#2d6a2d",fontWeight:600,textDecoration:"underline"}}>{cell.payFarmers.length}F</div>
+                                      {cell.payFarmers.length>0 && <>
+                                        <div style={{fontWeight:800,color:"#1a6a1a"}}>₹{Math.round(cell.balPay).toLocaleString("en-IN")}</div>
+                                        <div style={{fontSize:10,color:"#2d6a2d",fontWeight:600,textDecoration:"underline"}}>{cell.payFarmers.length}F</div>
+                                      </>}
+                                      {cell.pendingPay>0 && <div style={{fontSize:9,color:"#b8b8a0",marginTop:2}}>Pend ₹{Math.round(cell.pendingPay).toLocaleString("en-IN")}</div>}
                                     </>
                                   )}
                                 </td>
                                 <td onClick={cell.dueFarmers.length>0?()=>openCompanyVillageDrill(company,v,"due"):undefined} style={{padding:"6px 6px",textAlign:"center",background:"#fdecea",cursor:cell.dueFarmers.length>0?"pointer":"default"}}>
-                                  {cell.dueFarmers.length===0 ? <span style={{color:"#ccc"}}>—</span> : (
+                                  {cell.dueFarmers.length===0 && cell.pendingDue===0 ? <span style={{color:"#ccc"}}>—</span> : (
                                     <>
-                                      <div style={{fontWeight:800,color:"#c0392b"}}>₹{Math.round(cell.balDue).toLocaleString("en-IN")}</div>
-                                      <div style={{fontSize:10,color:"#c0392b",fontWeight:600,textDecoration:"underline"}}>{cell.dueFarmers.length}F</div>
+                                      {cell.dueFarmers.length>0 && <>
+                                        <div style={{fontWeight:800,color:"#c0392b"}}>₹{Math.round(cell.balDue).toLocaleString("en-IN")}</div>
+                                        <div style={{fontSize:10,color:"#c0392b",fontWeight:600,textDecoration:"underline"}}>{cell.dueFarmers.length}F</div>
+                                      </>}
+                                      {cell.pendingDue>0 && <div style={{fontSize:9,color:"#d8a8a0",marginTop:2}}>Pend ₹{Math.round(cell.pendingDue).toLocaleString("en-IN")}</div>}
                                     </>
                                   )}
                                 </td>
