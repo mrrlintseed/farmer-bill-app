@@ -4046,13 +4046,21 @@ export default function App() {
         const allF=farmers||[];
         const fStats=allF.map(f=>{
           const advWI=(f.advances||[]).reduce((s,a)=>{const{interest}=(a.compound?calcCompoundInterest:calcInterest)(a.amount,a.interestRate,a.date);return s+a.amount+interest;},0);
-          const cCalc=(f.crops||[]).map(c=>{const area=parseFloat(c.area)||0,qty=parseFloat(c.quantity)||0;return{value:c.result==="Pass"?qty*(parseFloat(c.ratePerUnit)||0):0,foundation:area*FOUNDATION_RATE,transport:qty};});
+          // value = full crop value regardless of company payment status (for "Total Crop Value" overview)
+          // paidValue = only counts if the company has actually paid for that variety — this is what real bills use for balance
+          const cCalc=(f.crops||[]).map(c=>{
+            const area=parseFloat(c.area)||0,qty=parseFloat(c.quantity)||0;
+            const isPaidPass=c.result==="Pass"&&isVarietyPaid(c.variety);
+            const fullValue=c.result==="Pass"?qty*(parseFloat(c.ratePerUnit)||0):0;
+            return{value:fullValue,paidValue:isPaidPass?fullValue:0,foundation:area*FOUNDATION_RATE,transport:qty};
+          });
           const cropVal=cCalc.reduce((s,c)=>s+c.value,0);
+          const paidCropVal=cCalc.reduce((s,c)=>s+c.paidValue,0);
           const found=cCalc.reduce((s,c)=>s+c.foundation,0);
           const trans=cCalc.reduce((s,c)=>s+c.transport,0);
           const jamWI=(f.jammaEnabled?(f.jammaEntries||[]):[]).reduce((s,j)=>{const{interest}=calcInterest(parseFloat(j.amount)||0,parseFloat(j.interestRate)||0,j.date||BILL_DATE);return s+(parseFloat(j.amount)||0)+interest;},0);
-          const bal=cropVal-advWI+jamWI-found-trans;
-          return{...f,balance:bal,cropVal,advWI};
+          const bal=paidCropVal-advWI+jamWI-found-trans;
+          return{...f,balance:bal,cropVal,paidCropVal,advWI};
         });
         const totalPayable=fStats.filter(f=>f.balance>0).reduce((s,f)=>s+f.balance,0);
         const totalDue=fStats.filter(f=>f.balance<0).reduce((s,f)=>s+Math.abs(f.balance),0);
@@ -4082,21 +4090,23 @@ export default function App() {
           });
         });
         // Prorate each farmer's overall balance (crop value net of advances/foundation/transport)
-        // across the companies they grew, by each company's share of that farmer's total crop value.
+        // across the companies they grew, by each company's share of that farmer's PAID crop value.
+        // Only varieties the company has actually paid for count — a farmer whose only crop is still
+        // Pending has nothing payable yet (matches their real bill) and won't appear in any company here.
         // This is an allocation, not a literal per-company balance — advances/deductions aren't
         // actually tied to one company, so this spreads them proportionally to estimate cash needed.
         fStats.forEach(f=>{
-          if(!f.cropVal || f.cropVal<=0) return; // no basis to allocate deductions against
+          if(!f.paidCropVal || f.paidCropVal<=0) return; // no paid basis to allocate deductions against
           const v=f.village?.trim()||"No Village";
           const companyShares={};
           (f.crops||[]).forEach(c=>{
-            if(c.result!=="Pass"||!c.variety) return;
+            if(c.result!=="Pass"||!c.variety||!isVarietyPaid(c.variety)) return;
             const company=getVarietyCompany(c.variety);
             const value=(parseFloat(c.quantity)||0)*(parseFloat(c.ratePerUnit)||0);
             companyShares[company]=(companyShares[company]||0)+value;
           });
           Object.entries(companyShares).forEach(([company,share])=>{
-            const proportion=share/f.cropVal;
+            const proportion=share/f.paidCropVal;
             const allocated=f.balance*proportion;
             if(!vcMatrix[company]) vcMatrix[company]={};
             if(!vcMatrix[company][v]) vcMatrix[company][v]={qty:0,toPay:0,pending:0,balPay:0,balDue:0,payFarmers:[],dueFarmers:[]};
