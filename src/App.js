@@ -1,3 +1,4 @@
+// DATA SAFETY FIX: local-first loading; no startup cloud overwrite — 2026-07-28
 // App build: 2026-07-25-verify-dashboard-balance — village x company matrix uses paid-only crop value
 // App build: 2026-07-24-force-rebuild — company grouping, minus-sign due amounts, single-color TO PAY rows
 // FIXED: calcCompoundInterest global scope + Growers Telugu print only — 2026-07-16
@@ -572,14 +573,13 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
   const totalAdv = advCalc.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
   const totalAdvInt = advCalc.reduce((s, a) => s + a.interest, 0);
   const totalAdvWithInt = totalAdv + totalAdvInt;
-  // Each completed company payment is stored as its own settlement summary.
-  // The original deductions are used only in Settlement 1. Later settlements use
-  // only the newly released seed amount and any unpaid Due carried forward.
+  // Settlement checkpoint — what was already deducted in the last settled bill.
+  // Only the amount ABOVE that checkpoint gets deducted again, so advances/foundation/
+  // transport that were already netted against a previous seed payment aren't subtracted twice.
   const settlementHistory = so.settlementHistory || [];
-  const lastSettlement = settlementHistory.length > 0 ? settlementHistory[settlementHistory.length - 1] : null;
-  const carryForwardDue = lastSettlement && (parseFloat(lastSettlement.runningDue) || 0) > 0
-    ? (parseFloat(lastSettlement.runningDue) || 0)
-    : 0;
+  const lastSettlement = settlementHistory.length>0 ? settlementHistory[settlementHistory.length-1] : null;
+  const checkpoint = lastSettlement || { advanceUsed: 0, foundationUsed: 0, transportUsed: 0, jammaUsed: 0 };
+  const carryForwardDue = lastSettlement && lastSettlement.runningDue>0 ? lastSettlement.runningDue : 0;
   const growers = (_billMode === "partial"
     ? (so.growers || []).filter(g => _selVars.includes(g.variety))
     : (so.growers || [])
@@ -603,6 +603,7 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
     return { ...g, type: vType, rateUsed: vRate, calcAmt, pendingAmt, vPaid: paid, vSettled: settled, vToPay: toPay };
   });
   const totalSeedAmt = growersCalc.filter(g=>g.vPaid).reduce((s,g) => s + g.calcAmt, 0);
+  const totalSettledAmt = growersCalc.filter(g=>g.vSettled&&g.result==="Pass").reduce((s,g)=>s+g.calcAmt,0);
   const totalToPayAmt = growersCalc.filter(g=>g.vToPay&&g.result==="Pass").reduce((s,g)=>s+g.calcAmt,0);
   const totalPendingAmt = growersCalc.reduce((s,g) => s + g.pendingAmt, 0);
   // Foundation from foundationSeeds (set in Excel Sheet2)
@@ -618,11 +619,13 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
   const totalJammaSO = jammaCalcSO.reduce((s,j)=>s+(parseFloat(j.amount)||0),0);
   const totalJammaIntSO = jammaCalcSO.reduce((s,j)=>s+j.interest,0);
   const totalJammaWithIntSO = totalJammaSO + totalJammaIntSO;
-  const isFirstSettlement = settlementHistory.length === 0;
-  const firstSettlementBalance = totalToPayAmt - totalAdvWithInt + totalJammaWithIntSO - totalFoundation - totalTransport;
-  const laterSettlementBalance = totalToPayAmt - carryForwardDue;
-  const balance = isFirstSettlement ? firstSettlementBalance : laterSettlementBalance;
-  const showCurrentSettlement = isFirstSettlement || totalToPayAmt > 0;
+  // Only the growth since the last settlement gets deducted again — Partial bills always use
+  // the full current totals (no checkpoint concept there), Final bills use the delta.
+  const deltaAdvance = _billMode==="partial" ? totalAdvWithInt : Math.max(0, totalAdvWithInt - checkpoint.advanceUsed);
+  const deltaFoundation = _billMode==="partial" ? totalFoundation : Math.max(0, totalFoundation - checkpoint.foundationUsed);
+  const deltaTransport = _billMode==="partial" ? totalTransport : Math.max(0, totalTransport - checkpoint.transportUsed);
+  const deltaJamma = _billMode==="partial" ? totalJammaWithIntSO : Math.max(0, totalJammaWithIntSO - checkpoint.jammaUsed);
+  const balance = totalToPayAmt - deltaAdvance + deltaJamma - deltaFoundation - deltaTransport - (_billMode==="partial" ? 0 : carryForwardDue);
 
   const TH = ({ ch }) => <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 600, fontSize: 11, whiteSpace: "nowrap" }}>{ch}</th>;
   const TD = ({ ch, s }) => <td style={{ padding: "3px 6px", textAlign: "center", fontSize: 11, whiteSpace: "nowrap", ...s }}>{ch}</td>;
@@ -897,182 +900,103 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
           );
         })()}
 
-        {_billMode === "partial" ? (
-          <div style={{ background:"#f0f5ff", borderRadius:6, padding:"12px 16px", border:"2px solid #2d5a8a", pageBreakInside:"avoid", breakInside:"avoid" }}>
-            <div style={{ fontWeight:700, color:"#2d5a8a", marginBottom:8, fontSize:13 }}>
-              🧾 PARTIAL PAYMENT — {_selVars.join(", ")}
-            </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr auto", gap:"4px 16px", fontSize:13 }}>
-              <div style={{ color:"#555" }}>Seed Amount for Selected Varieties</div>
-              <div style={{ textAlign:"right", fontWeight:800, fontSize:18, color:"#2d5a8a" }}>₹{totalSeedAmt.toLocaleString("en-IN")}</div>
-              <div style={{ color:"#888", fontSize:11 }}>Note: Record this amount as Jamma when sub-org returns it</div>
-              <div></div>
-            </div>
-          </div>
-        ) : (
-          <>
-            {/* Completed settlements remain visible as separate historical summaries. */}
-            {settlementHistory.map((h, i) => {
-              const historyDate = fmtDate(h.date || BILL_DATE);
-              const seedAmount = Math.round(parseFloat(h.seedAmount) || 0);
-              const historyAdvance = Math.round(parseFloat(h.deltaAdvance) || 0);
-              const historyFoundation = Math.round(parseFloat(h.deltaFoundation) || 0);
-              const historyTransport = Math.round(parseFloat(h.deltaTransport) || 0);
-              const historyJamma = Math.round(parseFloat(h.deltaJamma) || 0);
-              const historyCarryDue = Math.round(parseFloat(h.carryForwardDue) || 0);
-              const historyNet = parseFloat(h.netPaid) || 0;
-              const historyResult = Math.round(Math.abs(historyNet));
-              const wasPayable = historyNet >= 0;
+        <div style={{ background: _billMode==="partial" ? "#f0f5ff" : (balance >= 0 ? "#e8f5e9" : "#fdecea"), borderRadius: 6, padding: "12px 16px", border: "2px solid "+(_billMode==="partial"?"#2d5a8a":balance >= 0 ? "#2d6a2d" : "#e74c3c"), pageBreakInside: "avoid", breakInside: "avoid" }}>
+          {_billMode === "partial" ? (
+            <>
+              <div style={{ fontWeight:700, color:"#2d5a8a", marginBottom:8, fontSize:13 }}>
+                🧾 PARTIAL PAYMENT — {_selVars.join(", ")}
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr auto", gap:"4px 16px", fontSize:13 }}>
+                <div style={{ color:"#555" }}>Seed Amount for Selected Varieties</div>
+                <div style={{ textAlign:"right", fontWeight:800, fontSize:18, color:"#2d5a8a" }}>₹{totalSeedAmt.toLocaleString("en-IN")}</div>
+                <div style={{ color:"#888", fontSize:11 }}>Note: Record this amount as Jamma when sub-org returns it</div>
+                <div></div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontWeight: 700, color: "#1a2a4a", marginBottom: 8, fontSize: 13 }}>SETTLEMENT SUMMARY</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "4px 16px", fontSize: 13 }}>
 
-              return (
-                <div key={"settlement-history-"+i} style={{
-                  background: wasPayable ? "#f4fbf4" : "#fff5f3",
-                  borderRadius: 6,
-                  padding: "12px 16px",
-                  border: "2px solid "+(wasPayable ? "#6aa66a" : "#e07a6f"),
-                  pageBreakInside: "avoid",
-                  breakInside: "avoid",
-                  marginBottom: 12
-                }}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:8}}>
-                    <div style={{fontWeight:700,color:wasPayable?"#1a5c1a":"#a12d22",fontSize:13}}>
-                      SETTLEMENT SUMMARY {i + 1}
-                    </div>
-                    <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",justifyContent:"flex-end"}}>
-                      <span style={{fontSize:10,fontWeight:700,color:wasPayable?"#1a5c1a":"#a12d22",background:wasPayable?"#e1f2e1":"#fde3df",padding:"3px 8px",borderRadius:12}}>
-                        {wasPayable ? "✔ Already Settled" : "↪ Due Carried Forward"}
-                      </span>
-                      <span style={{fontSize:10,fontWeight:600,color:"#555",background:"#fff",padding:"3px 8px",borderRadius:12,border:"1px solid #ccd7e5"}}>
-                        Date: {historyDate}
-                      </span>
-                    </div>
-                  </div>
+                {/* To Pay — main billing amount */}
+                <div style={{ color: "#2d5a8a", fontWeight: 600 }}>💰 Seed Amount — To Pay Now</div>
+                <div style={{ textAlign: "right", fontWeight: 700, color: "#2d5a8a" }}>₹{totalToPayAmt.toLocaleString("en-IN")}</div>
 
-                  <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"5px 16px",fontSize:13}}>
-                    <div style={{color:"#1a5c1a",fontWeight:600}}>✔ Seed Amount — Already Settled on {historyDate}</div>
-                    <div style={{textAlign:"right",fontWeight:700,color:"#1a5c1a"}}>₹{seedAmount.toLocaleString("en-IN")}</div>
+                {/* Settled — reference only */}
+                {totalSettledAmt > 0 && <>
+                  <div style={{ color: "#1a5c1a", fontSize: 12 }}>✔ Already Settled (previous bills)</div>
+                  <div style={{ textAlign: "right", fontWeight: 600, color: "#1a5c1a", fontSize: 12 }}>₹{totalSettledAmt.toLocaleString("en-IN")}</div>
+                </>}
 
-                    {(historyAdvance > 0 || historyFoundation > 0 || historyTransport > 0 || historyJamma > 0 || historyCarryDue > 0) && (
-                      <div style={{borderTop:"1px dashed #c0c0c0",gridColumn:"1/-1",margin:"4px 0"}}></div>
-                    )}
+                {/* Pending — not counted */}
+                {totalPendingAmt > 0 && <>
+                  <div style={{ color: "#856404", fontSize: 12 }}>⏳ Pending — Company hasn't paid yet (not counted)</div>
+                  <div style={{ textAlign: "right", fontWeight: 600, color: "#856404", fontSize: 12 }}>₹{totalPendingAmt.toLocaleString("en-IN")}</div>
+                </>}
 
-                    {historyAdvance > 0 && <>
-                      <div style={{color:"#555"}}>Advance + Interest</div>
-                      <div style={{textAlign:"right",fontWeight:600,color:"#c0392b"}}>− ₹{historyAdvance.toLocaleString("en-IN")}</div>
-                    </>}
+                {/* Divider */}
+                <div style={{ borderTop: "1px dashed #c0c0c0", gridColumn: "1/-1", margin: "4px 0" }}></div>
 
-                    {historyJamma > 0 && <>
-                      <div style={{color:"#1a6a1a"}}>Jamma + Interest</div>
-                      <div style={{textAlign:"right",fontWeight:600,color:"#1a6a1a"}}>+ ₹{historyJamma.toLocaleString("en-IN")}</div>
-                    </>}
+                {/* Deductions — only the growth since the last settlement (see Settlement History table below) */}
+                {carryForwardDue > 0 && <>
+                  <div style={{ color: "#c0392b", fontWeight: 600, background:"#fdecea", padding:"2px 6px", borderRadius:4 }}>⬅ Carried Forward Due (from {lastSettlement ? fmtDate(lastSettlement.date) : "last bill"})</div>
+                  <div style={{ textAlign: "right", fontWeight: 700, color: "#c0392b", background:"#fdecea", padding:"2px 6px", borderRadius:4 }}>− ₹{carryForwardDue.toLocaleString("en-IN")}</div>
+                </>}
+                <div style={{ color: "#555" }}>Advance + Interest</div>
+                <div style={{ textAlign: "right", fontWeight: 600, color: "#c0392b" }}>− ₹{deltaAdvance.toLocaleString("en-IN")}</div>
 
-                    {historyFoundation > 0 && <>
-                      <div style={{color:"#555"}}>Foundation</div>
-                      <div style={{textAlign:"right",fontWeight:600,color:"#c0392b"}}>− ₹{historyFoundation.toLocaleString("en-IN")}</div>
-                    </>}
+                {deltaJamma > 0 && <>
+                  <div style={{ color: "#1a6a1a" }}>Jamma + Interest (partial payments received)</div>
+                  <div style={{ textAlign: "right", fontWeight: 600, color: "#1a6a1a" }}>+ ₹{deltaJamma.toLocaleString("en-IN")}</div>
+                </>}
 
-                    {historyTransport > 0 && <>
-                      <div style={{color:"#555"}}>Transportation</div>
-                      <div style={{textAlign:"right",fontWeight:600,color:"#c0392b"}}>− ₹{historyTransport.toLocaleString("en-IN")}</div>
-                    </>}
+                {deltaFoundation > 0 && <>
+                  <div style={{ color: "#555" }}>Foundation (see table above)</div>
+                  <div style={{ textAlign: "right", fontWeight: 600, color: "#c0392b" }}>− ₹{deltaFoundation.toLocaleString("en-IN")}</div>
+                </>}
 
-                    {historyCarryDue > 0 && <>
-                      <div style={{color:"#c0392b"}}>Previous Balance Due (Carried Forward)</div>
-                      <div style={{textAlign:"right",fontWeight:600,color:"#c0392b"}}>− ₹{historyCarryDue.toLocaleString("en-IN")}</div>
-                    </>}
+                {deltaTransport > 0 && <>
+                  <div style={{ color: "#555" }}>Transportation</div>
+                  <div style={{ textAlign: "right", fontWeight: 600, color: "#c0392b" }}>− ₹{deltaTransport.toLocaleString("en-IN")}</div>
+                </>}
 
-                    <div style={{borderTop:"2px solid "+(wasPayable?"#2d6a2d":"#c0392b"),paddingTop:6,marginTop:4,fontWeight:700,fontSize:14,color:wasPayable?"#1a4a1a":"#c0392b"}}>
-                      {wasPayable ? (
-                        <div>
-                          <div>Payable to Sub-Org</div>
-                          <div style={{fontSize:11,fontWeight:600,fontStyle:"italic",marginTop:2}}>(Already settled on {historyDate})</div>
-                        </div>
-                      ) : (
-                        <div>
-                          <div>Due from Sub-Org — Carried Forward</div>
-                          <div style={{fontSize:11,fontWeight:600,fontStyle:"italic",marginTop:2}}>(Carried forward from {historyDate})</div>
-                        </div>
-                      )}
-                    </div>
-                    <div style={{borderTop:"2px solid "+(wasPayable?"#2d6a2d":"#c0392b"),paddingTop:6,marginTop:4,textAlign:"right",fontWeight:800,fontSize:18,color:wasPayable?"#1a4a1a":"#c0392b"}}>
-                      {wasPayable ? "" : "− "}₹{historyResult.toLocaleString("en-IN")}
-                    </div>
-                  </div>
+                {/* Final balance */}
+                <div style={{ borderTop: "2px solid #2d5a8a", paddingTop: 6, marginTop: 4, fontWeight: 700, fontSize: 14, color: balance >= 0 ? "#1a4a1a" : "#c0392b" }}>
+                  {balance >= 0 ? "Payable to Sub-Org (This Bill)" : "Due from Sub-Org (This Bill)"}
                 </div>
-              );
-            })}
-
-            {/* A new summary is added only when there is a new seed payment to settle.
-                The first summary takes the original deductions. Later summaries do not. */}
-            {showCurrentSettlement && (
-              <div style={{
-                background: balance >= 0 ? "#eef5ff" : "#fdecea",
-                borderRadius: 6,
-                padding: "12px 16px",
-                border: "2px solid "+(balance >= 0 ? "#2d5a8a" : "#e74c3c"),
-                pageBreakInside: "avoid",
-                breakInside: "avoid"
-              }}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:8}}>
-                  <div style={{fontWeight:700,color:"#1a2a4a",fontSize:13}}>
-                    SETTLEMENT SUMMARY {settlementHistory.length + 1}
-                    {isFirstSettlement ? " — THIS BILL" : " — NEW PAYMENT (THIS BILL)"}
-                  </div>
-                  <span style={{fontSize:10,fontWeight:600,color:"#2d5a8a",background:"#fff",padding:"3px 8px",borderRadius:12,border:"1px solid #b0c8e0"}}>
-                    Bill Date: {fmtDate(so._billDate || BILL_DATE)}
-                  </span>
-                </div>
-
-                <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"5px 16px",fontSize:13}}>
-                  <div style={{color:"#2d5a8a",fontWeight:600}}>💰 Seed Amount — To Pay Now</div>
-                  <div style={{textAlign:"right",fontWeight:700,color:"#2d5a8a"}}>₹{totalToPayAmt.toLocaleString("en-IN")}</div>
-
-                  <div style={{color:"#856404",fontSize:12}}>⏳ Pending — Company hasn't paid yet (not counted)</div>
-                  <div style={{textAlign:"right",fontWeight:600,color:"#856404",fontSize:12}}>₹{totalPendingAmt.toLocaleString("en-IN")}</div>
-
-                  <div style={{borderTop:"1px dashed #c0c0c0",gridColumn:"1/-1",margin:"4px 0"}}></div>
-
-                  {isFirstSettlement ? (
-                    <>
-                      <div style={{color:"#555"}}>Advance + Interest</div>
-                      <div style={{textAlign:"right",fontWeight:600,color:"#c0392b"}}>− ₹{totalAdvWithInt.toLocaleString("en-IN")}</div>
-
-                      {totalJammaWithIntSO > 0 && <>
-                        <div style={{color:"#1a6a1a"}}>Jamma + Interest (partial payments received)</div>
-                        <div style={{textAlign:"right",fontWeight:600,color:"#1a6a1a"}}>+ ₹{totalJammaWithIntSO.toLocaleString("en-IN")}</div>
-                      </>}
-
-                      {totalFoundation > 0 && <>
-                        <div style={{color:"#555"}}>Foundation (see table above)</div>
-                        <div style={{textAlign:"right",fontWeight:600,color:"#c0392b"}}>− ₹{totalFoundation.toLocaleString("en-IN")}</div>
-                      </>}
-
-                      {totalTransport > 0 && <>
-                        <div style={{color:"#555"}}>Transportation</div>
-                        <div style={{textAlign:"right",fontWeight:600,color:"#c0392b"}}>− ₹{totalTransport.toLocaleString("en-IN")}</div>
-                      </>}
-                    </>
-                  ) : (
-                    <>
-                      <div style={{color:carryForwardDue>0?"#c0392b":"#555",fontWeight:carryForwardDue>0?600:400}}>
-                        Balance Due (Carried Forward)
-                      </div>
-                      <div style={{textAlign:"right",fontWeight:600,color:carryForwardDue>0?"#c0392b":"#555"}}>
-                        {carryForwardDue > 0 ? "− " : ""}₹{carryForwardDue.toLocaleString("en-IN")}
-                      </div>
-                    </>
-                  )}
-
-                  <div style={{borderTop:"2px solid #2d5a8a",paddingTop:6,marginTop:4,fontWeight:700,fontSize:14,color:balance>=0?"#1a4a1a":"#c0392b"}}>
-                    {balance >= 0 ? "Payable to Sub-Org (This Bill)" : "Due from Sub-Org (Carry Forward)"}
-                  </div>
-                  <div style={{borderTop:"2px solid #2d5a8a",paddingTop:6,marginTop:4,textAlign:"right",fontWeight:800,fontSize:18,color:balance>=0?"#1a4a1a":"#c0392b"}}>
-                    {balance >= 0 ? "" : "− "}₹{Math.abs(balance).toLocaleString("en-IN")}
-                  </div>
+                <div style={{ borderTop: "2px solid #2d5a8a", paddingTop: 6, marginTop: 4, textAlign: "right", fontWeight: 800, fontSize: 18, color: balance >= 0 ? "#1a4a1a" : "#c0392b" }}>
+                  {balance >= 0 ? "" : "− "}₹{Math.abs(balance).toLocaleString("en-IN")}
                 </div>
               </div>
-            )}
-          </>
+            </>
+          )}
+        </div>
+        {_billMode !== "partial" && settlementHistory.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontWeight: 700, color: "#1a2a4a", marginBottom: 6, fontSize: 13 }}>SETTLEMENT HISTORY</div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5, minWidth: 620 }}>
+                <thead><tr style={{ background: "#1a2a4a", color: "#fff" }}>
+                  <TH ch="Date" /><TH ch="Companies Settled" /><TH ch="Seed Amount" /><TH ch="Advance" /><TH ch="Foundation" /><TH ch="Transport" /><TH ch="Due Carried In" /><TH ch="Result" />
+                </tr></thead>
+                <tbody>
+                  {settlementHistory.map((h,i) => (
+                    <tr key={i} style={{ background: i%2===0?"#f5f8ff":"#fff", borderBottom:"1px solid #e0e8f5" }}>
+                      <TD ch={fmtDate(h.date)} />
+                      <TD ch={h.companies||"—"} />
+                      <TD ch={"₹"+Math.round(h.seedAmount).toLocaleString("en-IN")} />
+                      <TD ch={h.deltaAdvance>0?"− ₹"+Math.round(h.deltaAdvance).toLocaleString("en-IN"):"—"} s={{color:h.deltaAdvance>0?"#c0392b":"#aaa"}} />
+                      <TD ch={h.deltaFoundation>0?"− ₹"+Math.round(h.deltaFoundation).toLocaleString("en-IN"):"—"} s={{color:h.deltaFoundation>0?"#c0392b":"#aaa"}} />
+                      <TD ch={h.deltaTransport>0?"− ₹"+Math.round(h.deltaTransport).toLocaleString("en-IN"):"—"} s={{color:h.deltaTransport>0?"#c0392b":"#aaa"}} />
+                      <TD ch={h.carryForwardDue>0?"− ₹"+Math.round(h.carryForwardDue).toLocaleString("en-IN"):"—"} s={{color:h.carryForwardDue>0?"#c0392b":"#aaa"}} />
+                      <TD ch={h.netPaid>=0?"✔ Paid ₹"+Math.round(h.netPaid).toLocaleString("en-IN"):"Due ₹"+Math.round(Math.abs(h.netPaid)).toLocaleString("en-IN")+" →"} s={{fontWeight:700,color:h.netPaid>=0?"#1a6a1a":"#c0392b"}} />
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ fontSize: 10, color: "#999", marginTop: 4 }}>Payable amounts are paid out immediately and closed. A Due amount rolls into "Due Carried In" on the next row until it's fully offset by future seed money.</div>
+          </div>
         )}
         {so.comment && so.comment.trim() && (
           <div style={{ marginTop: 14, background: "#fff9e6", border: "1.5px solid #c8a000", borderRadius: 6, padding: "10px 14px" }}>
@@ -1465,6 +1389,10 @@ export default function App() {
   const [snapshots, setSnapshots] = useState([]);
   const [showRestore, setShowRestore] = useState(false);
   const cloudSaveTimer = useRef(null);
+  // Data-safety guards: code updates must never replace newer app data with an older cloud copy.
+  const dataLoadedRef = useRef(false);
+  const latestFarmersRef = useRef(null);
+  const latestSubOrgsRef = useRef([]);
   const [undoItem, setUndoItem] = useState(null); // {type, data, idx, timeout}
   const deleteWithUndo = (type, idx) => {
     if (type === "farmer") {
@@ -1511,6 +1439,8 @@ export default function App() {
   };
   const daysSinceBackup = lastBackupDate ? Math.floor((new Date()-new Date(lastBackupDate))/86400000) : 999;
   const [subOrgs, setSubOrgs] = useState([]);
+  useEffect(() => { latestFarmersRef.current = farmers; }, [farmers]);
+  useEffect(() => { latestSubOrgsRef.current = subOrgs; }, [subOrgs]);
   const [mode, setMode] = useState("farmers");
   const [dashboardDrill, setDashboardDrill] = useState(null); // { title, icon, color, rows: [{label, value, sub}] }
   const [selectedVillage, setSelectedVillage] = useState(null);
@@ -1629,8 +1559,11 @@ export default function App() {
     // Also save to Firebase
     if (cloudSaveTimer.current) clearTimeout(cloudSaveTimer.current);
     cloudSaveTimer.current = setTimeout(async () => {
+      if (!dataLoadedRef.current) return;
       const currentVS = JSON.parse(localStorage.getItem("variety_settings") || "{}");
-      await saveToCloud(hasChanges ? updatedFarmers : (farmers||[]), subOrgs||[], {...currentVS, __pesticideList: list});
+      const currentFarmers = hasChanges ? updatedFarmers : (latestFarmersRef.current || []);
+      const currentSubOrgs = latestSubOrgsRef.current || [];
+      await saveToCloud(currentFarmers, currentSubOrgs, {...currentVS, __pesticideList: list});
     }, 2000);
   };
 
@@ -1668,8 +1601,9 @@ export default function App() {
     // Save to Firebase
     if (cloudSaveTimer.current) clearTimeout(cloudSaveTimer.current);
     cloudSaveTimer.current = setTimeout(async () => {
+      if (!dataLoadedRef.current) return;
       setCloudStatus("saving");
-      const saved = await saveToCloud(farmers||[], subOrgs||[], vs);
+      const saved = await saveToCloud(latestFarmersRef.current || [], latestSubOrgsRef.current || [], vs);
       setCloudStatus(saved ? "saved" : "error");
       setTimeout(() => setCloudStatus("idle"), 3000);
     }, 2000);
@@ -1792,14 +1726,45 @@ export default function App() {
   const saveTimer = useRef(null);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const applyLoadedData = (loadedFarmers, loadedSubOrgs) => {
+      if (cancelled) return;
+      const safeFarmers = Array.isArray(loadedFarmers) ? loadedFarmers : [];
+      const safeSubOrgs = Array.isArray(loadedSubOrgs) ? loadedSubOrgs : [];
+      setFarmers(safeFarmers);
+      setSubOrgs(safeSubOrgs);
+      latestFarmersRef.current = safeFarmers;
+      latestSubOrgsRef.current = safeSubOrgs;
+      dataLoadedRef.current = true;
+      setCloudStatus("idle");
+    };
+
     const loadData = async () => {
       setCloudStatus("saving");
+
+      // SAFETY RULE: browser data is the primary copy. A code deployment/reload must
+      // never silently replace it with an older Firebase copy. Cloud is used only
+      // when this browser has no saved farmer/sub-org data (for example, a new device).
+      let localFarmers = [];
+      let localSubOrgs = [];
+      try { localFarmers = storage.getFarmers() || []; } catch { localFarmers = []; }
+      try { localSubOrgs = storage.getSubOrgs() || []; } catch { localSubOrgs = []; }
+
+      const hasLocalData = localFarmers.length > 0 || localSubOrgs.length > 0;
+      if (hasLocalData) {
+        applyLoadedData(localFarmers, localSubOrgs);
+        return;
+      }
+
+      // No browser data: load the cloud copy. This does not run when local data exists.
       const cloud = await loadFromCloud();
-      if (cloud && cloud.farmers && cloud.farmers.length > 0) {
-        setFarmers(cloud.farmers);
-        setSubOrgs(cloud.subOrgs || []);
+      if (cancelled) return;
+      if (cloud && Array.isArray(cloud.farmers) && (cloud.farmers.length > 0 || (cloud.subOrgs || []).length > 0)) {
+        const cloudFarmers = cloud.farmers || [];
+        const cloudSubOrgs = cloud.subOrgs || [];
+
         if (cloud.varietySettings && Object.keys(cloud.varietySettings).length > 0) {
-          // Extract pesticide list if stored inside varietySettings
           const vs = {...cloud.varietySettings};
           if (vs.__pesticideList) {
             const pl = vs.__pesticideList;
@@ -1811,38 +1776,33 @@ export default function App() {
           setVarietySettings(vs);
           localStorage.setItem("variety_settings", JSON.stringify(vs));
         }
-        storage.saveFarmers(cloud.farmers);
-        storage.saveSubOrgs(cloud.subOrgs || []);
+
+        storage.saveFarmers(cloudFarmers);
+        storage.saveSubOrgs(cloudSubOrgs);
+        applyLoadedData(cloudFarmers, cloudSubOrgs);
       } else {
-        const saved = storage.getFarmers();
-        setFarmers(saved && saved.length > 0 ? saved : sampleFarmers);
-        setSubOrgs(storage.getSubOrgs() || []);
+        // Only a genuinely empty installation receives the sample row.
+        applyLoadedData(sampleFarmers, []);
       }
-      setCloudStatus("idle");
     };
+
     loadData();
+    return () => { cancelled = true; };
   }, []);
 
-  // Sync pesticide list to Firebase after initial load (ensures defaults are saved)
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      if (pesticideList.length > 0) {
-        const currentVS = JSON.parse(localStorage.getItem("variety_settings") || "{}");
-        if (!currentVS.__pesticideList) {
-          await saveToCloud(farmers||[], subOrgs||[], {...currentVS, __pesticideList: pesticideList});
-        }
-      }
-    }, 5000); // 5 seconds after load
-    return () => clearTimeout(timer);
-  }, []);
+  // IMPORTANT: there is intentionally no automatic save-to-cloud effect on startup.
+  // The previous startup pesticide sync captured stale farmers/sub-orgs and could
+  // overwrite newer Firebase data a few seconds after every deployment/reload.
+  // Cloud saves now happen only after a real user edit.
 
   const saveFarmers = async (data) => {
     const ok = storage.saveFarmers(data);
+    latestFarmersRef.current = data;
     setSaveStatus(ok ? "saved" : "error");
     setTimeout(() => setSaveStatus("idle"), 2000);
     // Also save to Firebase
     setCloudStatus("saving");
-    const currentSubOrgs = subOrgs;
+    const currentSubOrgs = latestSubOrgsRef.current || [];
     const currentVS = JSON.parse(localStorage.getItem("variety_settings") || "{}");
     const saved = await saveToCloud(data, currentSubOrgs, currentVS);
     setCloudStatus(saved ? "saved" : "error");
@@ -1856,10 +1816,11 @@ export default function App() {
   };
   const updateSubOrgs = async (data) => {
     setSubOrgs(data);
+    latestSubOrgsRef.current = data;
     storage.saveSubOrgs(data);
     // Also save to Firebase
     setCloudStatus("saving");
-    const currentFarmers = farmers;
+    const currentFarmers = latestFarmersRef.current || [];
     const currentVS = JSON.parse(localStorage.getItem("variety_settings") || "{}");
     const saved = await saveToCloud(currentFarmers, data, currentVS);
     setCloudStatus(saved ? "saved" : "error");
@@ -3814,41 +3775,20 @@ export default function App() {
                                 },0);
                                 const history = so.settlementHistory||[];
                                 const lastEntry = history.length>0 ? history[history.length-1] : null;
-                                const carryForwardDue = lastEntry && (parseFloat(lastEntry.runningDue)||0)>0 ? (parseFloat(lastEntry.runningDue)||0) : 0;
-                                const cpPendingAmount = (so.growers||[])
-                                  .filter(g=>g.result==="Pass"&&!isSubOrgVarietyPaid(g.variety))
-                                  .reduce((s,g)=>s+(parseFloat(g.packets)||0)*(getSubOrgVarietyRate(g.variety)||parseFloat(g.rate)||0),0);
+                                const lastCp = lastEntry || {advanceUsed:0,foundationUsed:0,transportUsed:0,jammaUsed:0};
+                                const carryForwardDue = lastEntry && lastEntry.runningDue>0 ? lastEntry.runningDue : 0;
                                 const buildSettlementEntry=(companiesLabel,seedAmount)=>{
-                                  const isFirstEntry = history.length===0;
-                                  // Only Settlement 1 uses the original Advance, Foundation and Transport.
-                                  // Every later settlement uses only the newly released seed amount and
-                                  // the unpaid Due carried forward from the previous summary.
-                                  const deltaAdv=isFirstEntry?cpAdvWithInt:0;
-                                  const deltaFound=isFirstEntry?cpFoundation:0;
-                                  const deltaTrans=isFirstEntry?cpTransport:0;
-                                  const deltaJam=isFirstEntry?cpJammaWithInt:0;
-                                  const netPaid=isFirstEntry
-                                    ? seedAmount-deltaAdv+deltaJam-deltaFound-deltaTrans
-                                    : seedAmount-carryForwardDue;
+                                  const deltaAdv=Math.max(0,cpAdvWithInt-lastCp.advanceUsed);
+                                  const deltaFound=Math.max(0,cpFoundation-lastCp.foundationUsed);
+                                  const deltaTrans=Math.max(0,cpTransport-lastCp.transportUsed);
+                                  const deltaJam=Math.max(0,cpJammaWithInt-lastCp.jammaUsed);
+                                  // Due that wasn't paid off last time rolls into this settlement's deduction.
+                                  // If the result is still negative, it stays a running Due for the NEXT settlement.
+                                  // If it comes out positive, that's paid out now and resets to zero.
+                                  const netPaid=seedAmount-deltaAdv+deltaJam-deltaFound-deltaTrans-carryForwardDue;
                                   const runningDue=netPaid<0?Math.abs(netPaid):0;
-                                  return {
-                                    settlementNo:history.length+1,
-                                    date:so._billDate||BILL_DATE,
-                                    companies:companiesLabel,
-                                    seedAmount,
-                                    pendingAfter:cpPendingAmount,
-                                    deltaAdvance:deltaAdv,
-                                    deltaFoundation:deltaFound,
-                                    deltaTransport:deltaTrans,
-                                    deltaJamma:deltaJam,
-                                    carryForwardDue:isFirstEntry?0:carryForwardDue,
-                                    netPaid,
-                                    runningDue,
-                                    advanceUsed:cpAdvWithInt,
-                                    foundationUsed:cpFoundation,
-                                    transportUsed:cpTransport,
-                                    jammaUsed:cpJammaWithInt
-                                  };
+                                  return {date:BILL_DATE,companies:companiesLabel,seedAmount,deltaAdvance:deltaAdv,deltaFoundation:deltaFound,deltaTransport:deltaTrans,deltaJamma:deltaJam,carryForwardDue,netPaid,runningDue,
+                                    advanceUsed:cpAdvWithInt,foundationUsed:cpFoundation,transportUsed:cpTransport,jammaUsed:cpJammaWithInt};
                                 };
                                 return (
                                 <div style={{marginBottom:8}}>
@@ -3860,7 +3800,7 @@ export default function App() {
                                       const isSettled = vars.every(v=>settledVars.includes(v));
                                       const amt = vars.reduce((s,v)=>s+(so.growers||[]).filter(g=>g.variety===v&&g.result==="Pass").reduce((ss,g)=>ss+(parseFloat(g.packets)||0)*(getSubOrgVarietyRate(v)||parseFloat(g.rate)||0),0),0);
                                       const note = (so._varietyNotes||{})[company]||"";
-                                      const settledDate = (so._settledDates||{})[company] || vars.map(v=>(so._settledDates||{})[v]).find(Boolean) || "";
+                                      const settledDate = (so._settledDates||{})[company]||"";
                                       return (
                                         <div key={company} style={{display:"flex",flexDirection:"column",gap:4,padding:"8px 12px",borderRadius:8,
                                           border:"2px solid "+(isSettled?"#2d6a2d":"#b0c8e0"),
@@ -3870,13 +3810,7 @@ export default function App() {
                                             const willBeSettled=!isSettled;
                                             const newSettledVars = isSettled?settledVars.filter(x=>!vars.includes(x)):[...new Set([...settledVars,...vars])];
                                             const update = {...so, _settledVars: newSettledVars};
-                                            if(willBeSettled) {
-                                              const autoDate=(so._settledDates||{})[company]||so._billDate||BILL_DATE;
-                                              const dates={...(so._settledDates||{}),[company]:autoDate};
-                                              vars.forEach(v=>{dates[v]=autoDate;});
-                                              update._settledDates=dates;
-                                              update.settlementHistory=[...history,buildSettlementEntry(company,amt)];
-                                            }
+                                            if(willBeSettled) update.settlementHistory = [...history, buildSettlementEntry(company,amt)];
                                             updateSO(update);
                                           }}>
                                             <div style={{width:18,height:18,borderRadius:3,border:"2px solid "+(isSettled?"#2d6a2d":"#aaa"),background:isSettled?"#2d6a2d":"#fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:12,fontWeight:700,flexShrink:0}}>{isSettled?"✔":""}</div>
@@ -3893,19 +3827,7 @@ export default function App() {
                                               <label style={{fontSize:10,color:"#2d6a2d",fontWeight:600,whiteSpace:"nowrap"}}>📅 Settled On:</label>
                                               <input type="date" value={settledDate}
                                                 onClick={e=>e.stopPropagation()}
-                                                onChange={e=>{
-                                                  const nextDate=e.target.value;
-                                                  const d={...(so._settledDates||{}),[company]:nextDate};
-                                                  vars.forEach(v=>{d[v]=nextDate;});
-                                                  const nextHistory=[...(so.settlementHistory||[])];
-                                                  for(let hi=nextHistory.length-1;hi>=0;hi--){
-                                                    if(String(nextHistory[hi].companies||"").includes(company)){
-                                                      nextHistory[hi]={...nextHistory[hi],date:nextDate};
-                                                      break;
-                                                    }
-                                                  }
-                                                  updateSO({...so,_settledDates:d,settlementHistory:nextHistory});
-                                                }}
+                                                onChange={e=>{const d={...(so._settledDates||{}),[company]:e.target.value};updateSO({...so,_settledDates:d});}}
                                                 style={{fontSize:10,padding:"3px 6px",border:"1px solid #2d6a2d",borderRadius:4,background:"#fff",color:"#1a4a1a",flex:1}}
                                               />
                                             </div>
@@ -3927,16 +3849,7 @@ export default function App() {
                                       const remaining=companyEntries.filter(([c,vs])=>!vs.every(v=>settledVars.includes(v)));
                                       const combinedAmt=remaining.reduce((s,[c,vs])=>s+vs.reduce((ss,v)=>ss+(so.growers||[]).filter(g=>g.variety===v&&g.result==="Pass").reduce((sss,g)=>sss+(parseFloat(g.packets)||0)*(getSubOrgVarietyRate(v)||parseFloat(g.rate)||0),0),0),0);
                                       const update = {...so, _settledVars: paidVars};
-                                      if(remaining.length>0) {
-                                        const autoDate=so._billDate||BILL_DATE;
-                                        const dates={...(so._settledDates||{})};
-                                        remaining.forEach(([company,vars])=>{
-                                          dates[company]=dates[company]||autoDate;
-                                          vars.forEach(v=>{dates[v]=dates[v]||autoDate;});
-                                        });
-                                        update._settledDates=dates;
-                                        update.settlementHistory=[...history,buildSettlementEntry(remaining.map(([c])=>c).join(", "),combinedAmt)];
-                                      }
+                                      if(remaining.length>0) update.settlementHistory = [...history, buildSettlementEntry(remaining.map(([c])=>c).join(", "),combinedAmt)];
                                       updateSO(update);
                                     }} style={{background:"#2d6a2d",color:"#fff",border:"none",borderRadius:5,padding:"5px 12px",fontSize:12,cursor:"pointer"}}>✔ All Settled</button>
                                     <button onClick={()=>setSettledVars([])} style={{background:"#fff",color:"#555",border:"1px solid #ccc",borderRadius:5,padding:"5px 12px",fontSize:12,cursor:"pointer"}}>☐ All To Pay</button>
