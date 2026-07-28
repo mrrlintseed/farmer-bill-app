@@ -1284,7 +1284,11 @@ function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVar
                   <button onClick={()=>updCrop(i,"result","Fail")} style={{padding:"3px 12px",borderRadius:10,border:"none",fontWeight:700,fontSize:11,cursor:"pointer",background:!ip?"#721c24":"#fdecea",color:!ip?"#fff":"#721c24"}}>✗ Fail</button>
                 </div>
                 <div style={{fontSize:11,padding:"2px 10px",background:ip?"#e8f5e9":"#f5f5f5",borderRadius:5,color:ip?"#1a4a1a":"#999"}}>
-                  {ip ? <strong>{qty} × ₹{(c.ratePerUnit||0).toLocaleString("en-IN")} = ₹{(qty*(c.ratePerUnit||0)).toLocaleString("en-IN")}</strong> : <em>No amount — Fail</em>}
+                  {ip ? (() => {
+                    const vpRateNow = varietySettings?.[c.variety]?.rate ? parseFloat(varietySettings[c.variety].rate) : null;
+                    const resolvedRate = (c.rateOverride!==true && vpRateNow) ? vpRateNow : (parseFloat(c.ratePerUnit)||0);
+                    return <strong>{qty} × ₹{resolvedRate.toLocaleString("en-IN")} = ₹{(qty*resolvedRate).toLocaleString("en-IN")}</strong>;
+                  })() : <em>No amount — Fail</em>}
                 </div>
                 <button onClick={()=>onChange({...farmer,crops:farmer.crops.filter((_,j)=>j!==i)})} style={{background:"#fdecea",color:"#e74c3c",border:"1px solid #e74c3c",borderRadius:4,padding:"4px 8px",cursor:"pointer",fontSize:11}}>✕ Remove</button>
               </div>
@@ -1743,23 +1747,19 @@ export default function App() {
     const loadData = async () => {
       setCloudStatus("saving");
 
-      // SAFETY RULE: browser data is the primary copy. A code deployment/reload must
-      // never silently replace it with an older Firebase copy. Cloud is used only
-      // when this browser has no saved farmer/sub-org data (for example, a new device).
+      // Cloud is the shared source of truth across devices — always check it first so
+      // edits made on one device (phone, laptop) show up on every other device.
+      // Local storage is only a fallback for when the cloud is unreachable (offline)
+      // or the account is genuinely brand new.
       let localFarmers = [];
       let localSubOrgs = [];
       try { localFarmers = storage.getFarmers() || []; } catch { localFarmers = []; }
       try { localSubOrgs = storage.getSubOrgs() || []; } catch { localSubOrgs = []; }
 
-      const hasLocalData = localFarmers.length > 0 || localSubOrgs.length > 0;
-      if (hasLocalData) {
-        applyLoadedData(localFarmers, localSubOrgs);
-        return;
-      }
-
-      // No browser data: load the cloud copy. This does not run when local data exists.
-      const cloud = await loadFromCloud();
+      let cloud = null;
+      try { cloud = await loadFromCloud(); } catch { cloud = null; }
       if (cancelled) return;
+
       if (cloud && Array.isArray(cloud.farmers) && (cloud.farmers.length > 0 || (cloud.subOrgs || []).length > 0)) {
         const cloudFarmers = cloud.farmers || [];
         const cloudSubOrgs = cloud.subOrgs || [];
@@ -1780,8 +1780,12 @@ export default function App() {
         storage.saveFarmers(cloudFarmers);
         storage.saveSubOrgs(cloudSubOrgs);
         applyLoadedData(cloudFarmers, cloudSubOrgs);
+      } else if (localFarmers.length > 0 || localSubOrgs.length > 0) {
+        // Cloud unreachable or empty this time, but this device has a local cache — use it
+        // so the app still works offline, rather than showing blank.
+        applyLoadedData(localFarmers, localSubOrgs);
       } else {
-        // Only a genuinely empty installation receives the sample row.
+        // Genuinely nothing anywhere — fresh install.
         applyLoadedData(sampleFarmers, []);
       }
     };
