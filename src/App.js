@@ -4913,21 +4913,21 @@ export default function App() {
                           <td style="padding:5px 8px;border:1px solid #ddd;text-align:right;font-weight:600;color:#1a5c1a;">${r.value>0?fmt2(r.value):"—"}</td>
                           <td style="padding:5px 8px;border:1px solid #ddd;text-align:center;font-size:11px;color:#666;">${r.source}</td>
                         </tr>`).join("");
-                        const html="<!DOCTYPE html><html><head><meta charset=\"UTF-8\"/><title>${variety} — Farmer List</title>"
-  +"\n                          <style>body{font-family:Georgia,serif;padding:20px;color:#222;}h2{color:#1a4a1a;}table{border-collapse:collapse;width:100%;font-size:12px;}th{background:#1a4a1a;color:#fff;padding:7px 8px;border:1px solid #ddd;text-align:left;}.total-row td{font-weight:800;background:#e8f5e9;border-top:2px solid #1a4a1a;}@media print{@page{margin:8mm;size:A4 landscape;}}</style>"
-  +"\n                          </head><body>"
-  +"\n                          <h2>🌾 ${variety} — Farmer & Grower List</h2>"
-  +"\n                          <div style=\"font-size:13px;color:#555;margin-bottom:10px;\">Bill Date: ${fmtDate(BILL_DATE)} | Rate: ${fmt2(rate)} | Total Farmers+Growers: ${allRows.length}</div>"
-  +"\n                          <table><thead><tr>"
-  +"\n                            <th>S.No</th><th>Acc/Farmer No</th><th>Name</th><th>Father</th><th>Village</th><th>LOT No</th><th>Qty</th><th>Result</th><th>Type</th><th>Rate</th><th>Value</th><th>Source</th>"
-  +"\n                          </tr></thead><tbody>${rows}"
-  +"\n                          <tr class=\"total-row\">"
-  +"\n                            <td colspan=\"6\" style=\"padding:7px 8px;border:1px solid #ddd;\">TOTAL (Pass only)</td>"
-  +"\n                            <td style=\"padding:7px 8px;border:1px solid #ddd;text-align:center;\">${totalQty.toLocaleString(\"en-IN\")}</td>"
-  +"\n                            <td colspan=\"3\" style=\"padding:7px 8px;border:1px solid #ddd;\"></td>"
-  +"\n                            <td style=\"padding:7px 8px;border:1px solid #ddd;text-align:right;\">${fmt2(totalVal)}</td>"
-  +"\n                            <td></td>"
-  +"\n                          </tr></tbody></table></body></html>";
+                        const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>${variety} — Farmer List</title>
+                          <style>body{font-family:Georgia,serif;padding:20px;color:#222;}h2{color:#1a4a1a;}table{border-collapse:collapse;width:100%;font-size:12px;}th{background:#1a4a1a;color:#fff;padding:7px 8px;border:1px solid #ddd;text-align:left;}.total-row td{font-weight:800;background:#e8f5e9;border-top:2px solid #1a4a1a;}@media print{@page{margin:8mm;size:A4 landscape;}}</style>
+                          </head><body>
+                          <h2>🌾 ${variety} — Farmer & Grower List</h2>
+                          <div style="font-size:13px;color:#555;margin-bottom:10px;">Bill Date: ${fmtDate(BILL_DATE)} | Rate: ${fmt2(rate)} | Total Farmers+Growers: ${allRows.length}</div>
+                          <table><thead><tr>
+                            <th>S.No</th><th>Acc/Farmer No</th><th>Name</th><th>Father</th><th>Village</th><th>LOT No</th><th>Qty</th><th>Result</th><th>Type</th><th>Rate</th><th>Value</th><th>Source</th>
+                          </tr></thead><tbody>${rows}
+                          <tr class="total-row">
+                            <td colspan="6" style="padding:7px 8px;border:1px solid #ddd;">TOTAL (Pass only)</td>
+                            <td style="padding:7px 8px;border:1px solid #ddd;text-align:center;">${totalQty.toLocaleString("en-IN")}</td>
+                            <td colspan="3" style="padding:7px 8px;border:1px solid #ddd;"></td>
+                            <td style="padding:7px 8px;border:1px solid #ddd;text-align:right;">${fmt2(totalVal)}</td>
+                            <td></td>
+                          </tr></tbody></table></body></html>`;
                         const w=window.open("","_blank"); w.document.write(html); w.document.close(); setTimeout(()=>w.print(),400);
                       }} style={{background:"#1a4a1a",color:"#fff",border:"none",borderRadius:4,padding:"4px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
                         🖨️ Print Farmer List
