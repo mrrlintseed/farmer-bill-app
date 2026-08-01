@@ -579,7 +579,7 @@ function BillPreview({ farmer, varietySettings, getVarietyBillDate, isVarietyPai
             </div>
           );
         })}
-        {(newCropValue > 0 || farmerCarryForwardDue > 0 || farmerSettlementHistory.length === 0) && (
+        {(farmerSettlementHistory.length === 0 || farmer.partiallyBilled) && (
           <div style={{ background: balance >= 0 ? "#e8f5e9" : "#fdecea", borderRadius: 6, padding: "12px 16px", border: "2px solid "+(balance >= 0 ? "#2d6a2d" : "#e74c3c") }}>
             <div style={{fontWeight:700,color:"#1a4a1a",marginBottom:8,fontSize:13}}>
               SETTLEMENT SUMMARY {farmerSettlementHistory.length+1} — {farmerSettlementHistory.length===0?"THIS BILL":"NEW PAYMENT (THIS BILL)"} | తీర్పు సారాంశం
