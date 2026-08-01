@@ -573,13 +573,6 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
   const totalAdv = advCalc.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
   const totalAdvInt = advCalc.reduce((s, a) => s + a.interest, 0);
   const totalAdvWithInt = totalAdv + totalAdvInt;
-  // Settlement checkpoint — what was already deducted in the last settled bill.
-  // Only the amount ABOVE that checkpoint gets deducted again, so advances/foundation/
-  // transport that were already netted against a previous seed payment aren't subtracted twice.
-  const settlementHistory = so.settlementHistory || [];
-  const lastSettlement = settlementHistory.length>0 ? settlementHistory[settlementHistory.length-1] : null;
-  const checkpoint = lastSettlement || { advanceUsed: 0, foundationUsed: 0, transportUsed: 0, jammaUsed: 0 };
-  const carryForwardDue = lastSettlement && lastSettlement.runningDue>0 ? lastSettlement.runningDue : 0;
   const growers = (_billMode === "partial"
     ? (so.growers || []).filter(g => _selVars.includes(g.variety))
     : (so.growers || [])
@@ -619,6 +612,33 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
   const totalJammaSO = jammaCalcSO.reduce((s,j)=>s+(parseFloat(j.amount)||0),0);
   const totalJammaIntSO = jammaCalcSO.reduce((s,j)=>s+j.interest,0);
   const totalJammaWithIntSO = totalJammaSO + totalJammaIntSO;
+  // Settlement checkpoint — what was already deducted in the last settled bill.
+  // Only the amount ABOVE that checkpoint gets deducted again, so advances/foundation/
+  // transport that were already netted against a previous seed payment aren't subtracted twice.
+  const realSettlementHistory = so.settlementHistory || [];
+  // MIGRATION: some sub-orgs had companies marked Settled before this history feature
+  // existed, so there's no recorded entry for that payment. Reconstruct one for display
+  // only (never written back to so) so the deductions aren't counted a second time here,
+  // and so the old payment still shows as its own "Already Settled" summary below.
+  const settlementHistory = (realSettlementHistory.length === 0 && totalSettledAmt > 0)
+    ? [{
+        date: (() => {
+          const dates = Object.values(so._settledDates||{}).filter(Boolean);
+          return dates.length>0 ? dates.sort().reverse()[0] : null;
+        })(),
+        companies: "Previously settled (before history tracking)",
+        seedAmount: totalSettledAmt,
+        deltaAdvance: totalAdvWithInt, deltaFoundation: totalFoundation, deltaTransport: totalTransport, deltaJamma: totalJammaWithIntSO,
+        carryForwardDue: 0,
+        netPaid: totalSettledAmt - totalAdvWithInt + totalJammaWithIntSO - totalFoundation - totalTransport,
+        runningDue: Math.max(0, totalAdvWithInt + totalFoundation + totalTransport - totalJammaWithIntSO - totalSettledAmt),
+        advanceUsed: totalAdvWithInt, foundationUsed: totalFoundation, transportUsed: totalTransport, jammaUsed: totalJammaWithIntSO,
+        isMigrated: true
+      }]
+    : realSettlementHistory;
+  const lastSettlement = settlementHistory.length>0 ? settlementHistory[settlementHistory.length-1] : null;
+  const checkpoint = lastSettlement || { advanceUsed: 0, foundationUsed: 0, transportUsed: 0, jammaUsed: 0 };
+  const carryForwardDue = lastSettlement && lastSettlement.runningDue>0 ? lastSettlement.runningDue : 0;
   // Only the growth since the last settlement gets deducted again — Partial bills always use
   // the full current totals (no checkpoint concept there), Final bills use the delta.
   const deltaAdvance = _billMode==="partial" ? totalAdvWithInt : Math.max(0, totalAdvWithInt - checkpoint.advanceUsed);
@@ -917,6 +937,7 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
             {/* Every past settlement stays visible as its own numbered, closed summary */}
             {settlementHistory.map((h, i) => {
               const wasPayable = h.netPaid >= 0;
+              const dateLabel = h.date ? fmtDate(h.date) : "(date not recorded)";
               return (
                 <div key={"settlement-"+i} style={{
                   background: wasPayable ? "#f4fbf4" : "#fff5f3",
@@ -930,18 +951,23 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
                       <span style={{fontSize:10,fontWeight:700,color:wasPayable?"#1a5c1a":"#a12d22",background:wasPayable?"#e1f2e1":"#fde3df",padding:"3px 8px",borderRadius:12}}>
                         {wasPayable ? "✔ Already Settled" : "↪ Due Carried Forward"}
                       </span>
-                      <span style={{fontSize:10,fontWeight:600,color:"#555",background:"#fff",padding:"3px 8px",borderRadius:12,border:"1px solid #ccd7e5"}}>Date: {fmtDate(h.date)}</span>
+                      <span style={{fontSize:10,fontWeight:600,color:"#555",background:"#fff",padding:"3px 8px",borderRadius:12,border:"1px solid #ccd7e5"}}>Date: {dateLabel}</span>
                     </div>
                   </div>
+                  {h.isMigrated && (
+                    <div style={{fontSize:10,color:"#856404",background:"#fff9e8",border:"1px solid #f0d080",borderRadius:4,padding:"4px 8px",marginBottom:8}}>
+                      ℹ️ Reconstructed from companies already marked Settled before this history feature existed — not an exact original bill, but keeps new payments from double-deducting.
+                    </div>
+                  )}
                   <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"5px 16px",fontSize:13}}>
-                    <div style={{color:"#1a5c1a",fontWeight:600}}>✔ Seed Amount — Already Settled on {fmtDate(h.date)}</div>
+                    <div style={{color:"#1a5c1a",fontWeight:600}}>✔ Seed Amount — Already Settled{h.date?" on "+dateLabel:""}</div>
                     <div style={{textAlign:"right",fontWeight:700,color:"#1a5c1a"}}>₹{Math.round(h.seedAmount).toLocaleString("en-IN")}</div>
 
                     {(h.deltaAdvance>0||h.deltaFoundation>0||h.deltaTransport>0||h.deltaJamma>0||h.carryForwardDue>0) &&
                       <div style={{borderTop:"1px dashed #c0c0c0",gridColumn:"1/-1",margin:"4px 0"}}></div>}
 
                     {h.carryForwardDue>0 && <>
-                      <div style={{color:"#c0392b"}}>⬅ Carried Forward Due (from {settlementHistory[i-1]?fmtDate(settlementHistory[i-1].date):"before"})</div>
+                      <div style={{color:"#c0392b"}}>⬅ Carried Forward Due (from {settlementHistory[i-1]&&settlementHistory[i-1].date?fmtDate(settlementHistory[i-1].date):"before"})</div>
                       <div style={{textAlign:"right",fontWeight:600,color:"#c0392b"}}>− ₹{Math.round(h.carryForwardDue).toLocaleString("en-IN")}</div>
                     </>}
                     {h.deltaAdvance>0 && <>
@@ -988,7 +1014,7 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
                   <div style={{ borderTop: "1px dashed #c0c0c0", gridColumn: "1/-1", margin: "4px 0" }}></div>
 
                   {carryForwardDue > 0 && <>
-                    <div style={{ color: "#c0392b", fontWeight: 600, background:"#fdecea", padding:"2px 6px", borderRadius:4 }}>⬅ Carried Forward Due (from {lastSettlement ? fmtDate(lastSettlement.date) : "last bill"})</div>
+                    <div style={{ color: "#c0392b", fontWeight: 600, background:"#fdecea", padding:"2px 6px", borderRadius:4 }}>⬅ Carried Forward Due (from {lastSettlement && lastSettlement.date ? fmtDate(lastSettlement.date) : "last bill"})</div>
                     <div style={{ textAlign: "right", fontWeight: 700, color: "#c0392b", background:"#fdecea", padding:"2px 6px", borderRadius:4 }}>− ₹{carryForwardDue.toLocaleString("en-IN")}</div>
                   </>}
                   {deltaAdvance > 0 && <>
