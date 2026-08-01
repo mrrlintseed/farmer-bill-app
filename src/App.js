@@ -233,7 +233,38 @@ function BillPreview({ farmer, varietySettings, getVarietyBillDate, isVarietyPai
   const totalJamma = finalJamma.reduce((s, j) => s + (parseFloat(j.amount) || 0), 0);
   const totalJammaInt = finalJamma.reduce((s, j) => s + j.interest, 0);
   const totalJammaWithInt = totalJamma + totalJammaInt;
-  const balance = totalCropValue - totalAdvWithInt + totalJammaWithInt - totalFoundation - totalTransport;
+  const totalPendingValue = cropsCalc.reduce((s, c) => s + c.pendingValue, 0);
+
+  // Settlement checkpoint — same fix as Sub-Org bills: only the growth since the last
+  // recorded payment gets deducted again, so advance/foundation/transport already
+  // netted against an earlier crop payment aren't subtracted a second time.
+  const realFarmerSettlementHistory = farmer.settlementHistory || [];
+  // MIGRATION: farmers already marked Billed before this history feature existed have
+  // no recorded entry for that payment. Reconstruct one for display only (never written
+  // back to farmer) so a later pending crop doesn't double-deduct against it.
+  const farmerSettlementHistory = (realFarmerSettlementHistory.length === 0 && farmer.billingDone && totalCropValue > 0)
+    ? [{
+        date: farmer.billingDoneDate || BILL_DATE,
+        seedAmount: totalCropValue,
+        deltaAdvance: totalAdvWithInt, deltaFoundation: totalFoundation, deltaTransport: totalTransport, deltaJamma: totalJammaWithInt,
+        carryForwardDue: 0,
+        netPaid: totalCropValue - totalAdvWithInt + totalJammaWithInt - totalFoundation - totalTransport,
+        runningDue: Math.max(0, totalAdvWithInt + totalFoundation + totalTransport - totalJammaWithInt - totalCropValue),
+        advanceUsed: totalAdvWithInt, foundationUsed: totalFoundation, transportUsed: totalTransport, jammaUsed: totalJammaWithInt,
+        isMigrated: true
+      }]
+    : realFarmerSettlementHistory;
+  const lastFarmerSettlement = farmerSettlementHistory.length>0 ? farmerSettlementHistory[farmerSettlementHistory.length-1] : null;
+  const farmerCheckpoint = lastFarmerSettlement || { advanceUsed: 0, foundationUsed: 0, transportUsed: 0, jammaUsed: 0 };
+  const farmerCarryForwardDue = lastFarmerSettlement && lastFarmerSettlement.runningDue>0 ? lastFarmerSettlement.runningDue : 0;
+  const deltaAdvance = Math.max(0, totalAdvWithInt - farmerCheckpoint.advanceUsed);
+  const deltaFoundation = Math.max(0, totalFoundation - farmerCheckpoint.foundationUsed);
+  const deltaTransport = Math.max(0, totalTransport - farmerCheckpoint.transportUsed);
+  const deltaJamma = Math.max(0, totalJammaWithInt - farmerCheckpoint.jammaUsed);
+  // "New" crop value not yet part of any recorded settlement
+  const settledCropValue = farmerSettlementHistory.reduce((s,h)=>s+(parseFloat(h.seedAmount)||0), 0);
+  const newCropValue = Math.max(0, totalCropValue - settledCropValue);
+  const balance = newCropValue - deltaAdvance + deltaJamma - deltaFoundation - deltaTransport - farmerCarryForwardDue;
 
   const TH = ({ ch }) => <th style={{ padding: "4px 6px", textAlign: "center", fontWeight: 600, whiteSpace: "nowrap", fontSize: 11 }}>{ch}</th>;
   const TD = ({ ch, s }) => <td style={{ padding: "4px 6px", textAlign: "center", whiteSpace: "nowrap", fontSize: 11, ...s }}>{ch}</td>;
@@ -502,27 +533,81 @@ function BillPreview({ farmer, varietySettings, getVarietyBillDate, isVarietyPai
           ));
         })()}
 
-        {/* Settlement */}
-        <div style={{ background: balance >= 0 ? "#e8f5e9" : "#fdecea", borderRadius: 6, padding: "12px 16px", border: "2px solid "+(balance >= 0 ? "#2d6a2d" : "#e74c3c") }}>
-          <div style={{ fontWeight: 700, color: "#1a4a1a", marginBottom: 8, fontSize: 13 }}>SETTLEMENT SUMMARY | తీర్పు సారాంశం</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "4px 16px", fontSize: 13 }}>
-            <div style={{ color: "#555" }}>Total Crop Value (Paid)</div><div style={{ textAlign: "right", fontWeight: 600, color: "#1a6a1a" }}>₹{totalCropValue.toLocaleString("en-IN")}</div>
-            {cropsCalc.some(c=>c.pendingValue>0) && <>
-              <div style={{ color: "#856404" }}>⏳ Pending (not counted)</div>
-              <div style={{ textAlign: "right", fontWeight: 600, color: "#856404" }}>₹{cropsCalc.reduce((s,c)=>s+(c.pendingValue||0),0).toLocaleString("en-IN")}</div>
-            </>}
-            <div style={{ color: "#555" }}>Total Advance + Interest</div><div style={{ textAlign: "right", fontWeight: 600, color: "#c0392b" }}>− ₹{totalAdvWithInt.toLocaleString("en-IN")}</div>
-            {farmer.jammaEnabled && totalJammaWithInt > 0 && <><div style={{ color: "#856404" }}>Jamma + Interest</div><div style={{ textAlign: "right", fontWeight: 600, color: "#856404" }}>+ ₹{totalJammaWithInt.toLocaleString("en-IN")}</div></>}
-            {totalFoundation > 0 && <><div style={{ color: "#555" }}>Foundation</div><div style={{ textAlign: "right", fontWeight: 600, color: "#c0392b" }}>− ₹{totalFoundation.toLocaleString("en-IN")}</div></>}
-            {totalTransport > 0 && <><div style={{ color: "#555" }}>Transportation</div><div style={{ textAlign: "right", fontWeight: 600, color: "#c0392b" }}>− ₹{totalTransport.toLocaleString("en-IN")}</div></>}
-            <div style={{ borderTop: "2px solid #2d6a2d", paddingTop: 6, marginTop: 4, fontWeight: 700, fontSize: 14, color: balance >= 0 ? "#1a4a1a" : "#c0392b" }}>
-              {balance >= 0 ? "Balance Payable to Farmer | రైతుకు చెల్లించవలసిన మొత్తం" : "Balance Due from Farmer | రైతు నుండి రావలసిన మొత్తం"}
+        {/* Settlement — same stacked design as Sub-Org bills */}
+        {farmerSettlementHistory.map((h, i) => {
+          const wasPayable = h.netPaid >= 0;
+          const dateLabel = h.date ? fmtDate(h.date) : "(date not recorded)";
+          return (
+            <div key={"fsettle-"+i} style={{
+              background: wasPayable ? "#f4fbf4" : "#fff5f3", borderRadius: 6, padding: "12px 16px",
+              border: "2px solid "+(wasPayable ? "#6aa66a" : "#e07a6f"), marginBottom: 12
+            }}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:8}}>
+                <div style={{fontWeight:700,color:wasPayable?"#1a5c1a":"#a12d22",fontSize:13}}>SETTLEMENT SUMMARY {i+1}</div>
+                <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",justifyContent:"flex-end"}}>
+                  <span style={{fontSize:10,fontWeight:700,color:wasPayable?"#1a5c1a":"#a12d22",background:wasPayable?"#e1f2e1":"#fde3df",padding:"3px 8px",borderRadius:12}}>
+                    {wasPayable ? "✔ Already Settled" : "↪ Due Carried Forward"}
+                  </span>
+                  <span style={{fontSize:10,fontWeight:600,color:"#555",background:"#fff",padding:"3px 8px",borderRadius:12,border:"1px solid #ccd7e5"}}>Date: {dateLabel}</span>
+                </div>
+              </div>
+              {h.isMigrated && (
+                <div style={{fontSize:10,color:"#856404",background:"#fff9e8",border:"1px solid #f0d080",borderRadius:4,padding:"4px 8px",marginBottom:8}}>
+                  ℹ️ Reconstructed from this farmer already marked Billed before this history feature existed.
+                </div>
+              )}
+              <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"5px 16px",fontSize:13}}>
+                <div style={{color:"#1a5c1a",fontWeight:600}}>✔ Crop Value — Already Settled{h.date?" on "+dateLabel:""}</div>
+                <div style={{textAlign:"right",fontWeight:700,color:"#1a5c1a"}}>₹{Math.round(h.seedAmount).toLocaleString("en-IN")}</div>
+                {(h.deltaAdvance>0||h.deltaFoundation>0||h.deltaTransport>0||h.deltaJamma>0||h.carryForwardDue>0) &&
+                  <div style={{borderTop:"1px dashed #c0c0c0",gridColumn:"1/-1",margin:"4px 0"}}></div>}
+                {h.carryForwardDue>0 && <>
+                  <div style={{color:"#c0392b"}}>⬅ Carried Forward Due</div>
+                  <div style={{textAlign:"right",fontWeight:600,color:"#c0392b"}}>− ₹{Math.round(h.carryForwardDue).toLocaleString("en-IN")}</div>
+                </>}
+                {h.deltaAdvance>0 && <><div style={{color:"#555"}}>Advance + Interest</div><div style={{textAlign:"right",fontWeight:600,color:"#c0392b"}}>− ₹{Math.round(h.deltaAdvance).toLocaleString("en-IN")}</div></>}
+                {h.deltaJamma>0 && <><div style={{color:"#1a6a1a"}}>Jamma + Interest</div><div style={{textAlign:"right",fontWeight:600,color:"#1a6a1a"}}>+ ₹{Math.round(h.deltaJamma).toLocaleString("en-IN")}</div></>}
+                {h.deltaFoundation>0 && <><div style={{color:"#555"}}>Foundation</div><div style={{textAlign:"right",fontWeight:600,color:"#c0392b"}}>− ₹{Math.round(h.deltaFoundation).toLocaleString("en-IN")}</div></>}
+                {h.deltaTransport>0 && <><div style={{color:"#555"}}>Transportation</div><div style={{textAlign:"right",fontWeight:600,color:"#c0392b"}}>− ₹{Math.round(h.deltaTransport).toLocaleString("en-IN")}</div></>}
+                <div style={{borderTop:"2px solid "+(wasPayable?"#2d6a2d":"#c0392b"),paddingTop:6,marginTop:4,fontWeight:700,fontSize:14,color:wasPayable?"#1a4a1a":"#c0392b"}}>
+                  {wasPayable ? "Paid to Farmer" : "Due from Farmer (Carried Forward)"}
+                </div>
+                <div style={{borderTop:"2px solid "+(wasPayable?"#2d6a2d":"#c0392b"),paddingTop:6,marginTop:4,textAlign:"right",fontWeight:800,fontSize:18,color:wasPayable?"#1a4a1a":"#c0392b"}}>
+                  {wasPayable?"":"− "}₹{Math.round(Math.abs(h.netPaid)).toLocaleString("en-IN")}
+                </div>
+              </div>
             </div>
-            <div style={{ borderTop: "2px solid #2d6a2d", paddingTop: 6, marginTop: 4, textAlign: "right", fontWeight: 800, fontSize: 18, color: balance >= 0 ? "#1a4a1a" : "#c0392b" }}>
-              {balance >= 0 ? "" : "− "}₹{Math.abs(balance).toLocaleString("en-IN")}
+          );
+        })}
+        {(newCropValue > 0 || farmerCarryForwardDue > 0 || farmerSettlementHistory.length === 0) && (
+          <div style={{ background: balance >= 0 ? "#e8f5e9" : "#fdecea", borderRadius: 6, padding: "12px 16px", border: "2px solid "+(balance >= 0 ? "#2d6a2d" : "#e74c3c") }}>
+            <div style={{fontWeight:700,color:"#1a4a1a",marginBottom:8,fontSize:13}}>
+              SETTLEMENT SUMMARY {farmerSettlementHistory.length+1} — {farmerSettlementHistory.length===0?"THIS BILL":"NEW PAYMENT (THIS BILL)"} | తీర్పు సారాంశం
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "4px 16px", fontSize: 13 }}>
+              <div style={{ color: "#555" }}>Crop Value (Paid)</div><div style={{ textAlign: "right", fontWeight: 600, color: "#1a6a1a" }}>₹{newCropValue.toLocaleString("en-IN")}</div>
+              {totalPendingValue > 0 && <>
+                <div style={{ color: "#856404" }}>⏳ Pending (not counted)</div>
+                <div style={{ textAlign: "right", fontWeight: 600, color: "#856404" }}>₹{totalPendingValue.toLocaleString("en-IN")}</div>
+              </>}
+              <div style={{ borderTop: "1px dashed #c0c0c0", gridColumn: "1/-1", margin: "4px 0" }}></div>
+              {farmerCarryForwardDue > 0 && <>
+                <div style={{ color: "#c0392b", fontWeight: 600, background:"#fdecea", padding:"2px 6px", borderRadius:4 }}>⬅ Carried Forward Due</div>
+                <div style={{ textAlign: "right", fontWeight: 700, color: "#c0392b", background:"#fdecea", padding:"2px 6px", borderRadius:4 }}>− ₹{farmerCarryForwardDue.toLocaleString("en-IN")}</div>
+              </>}
+              {deltaAdvance > 0 && <><div style={{ color: "#555" }}>Advance + Interest</div><div style={{ textAlign: "right", fontWeight: 600, color: "#c0392b" }}>− ₹{deltaAdvance.toLocaleString("en-IN")}</div></>}
+              {farmer.jammaEnabled && deltaJamma > 0 && <><div style={{ color: "#856404" }}>Jamma + Interest</div><div style={{ textAlign: "right", fontWeight: 600, color: "#856404" }}>+ ₹{deltaJamma.toLocaleString("en-IN")}</div></>}
+              {deltaFoundation > 0 && <><div style={{ color: "#555" }}>Foundation</div><div style={{ textAlign: "right", fontWeight: 600, color: "#c0392b" }}>− ₹{deltaFoundation.toLocaleString("en-IN")}</div></>}
+              {deltaTransport > 0 && <><div style={{ color: "#555" }}>Transportation</div><div style={{ textAlign: "right", fontWeight: 600, color: "#c0392b" }}>− ₹{deltaTransport.toLocaleString("en-IN")}</div></>}
+              <div style={{ borderTop: "2px solid #2d6a2d", paddingTop: 6, marginTop: 4, fontWeight: 700, fontSize: 14, color: balance >= 0 ? "#1a4a1a" : "#c0392b" }}>
+                {balance >= 0 ? "Balance Payable to Farmer | రైతుకు చెల్లించవలసిన మొత్తం" : "Balance Due from Farmer | రైతు నుండి రావలసిన మొత్తం"}
+              </div>
+              <div style={{ borderTop: "2px solid #2d6a2d", paddingTop: 6, marginTop: 4, textAlign: "right", fontWeight: 800, fontSize: 18, color: balance >= 0 ? "#1a4a1a" : "#c0392b" }}>
+                {balance >= 0 ? "" : "− "}₹{Math.abs(balance).toLocaleString("en-IN")}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {farmer.comment && farmer.comment.trim() && (
           <div style={{ marginTop: 14, background: "#fff9e6", border: "1.5px solid #c8a000", borderRadius: 6, padding: "10px 14px" }}>
@@ -1061,7 +1146,7 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
 }
 
 // ─── Farmer Form ────────────────────────────────────────────────
-function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVarietyRate, getVarietyType, farmers, subOrgs, pesticideList }) {
+function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVarietyRate, getVarietyType, isVarietyPaid, getVarietyBillDate, farmers, subOrgs, pesticideList }) {
   const MAX_ADV = 10, MAX_CROP = 3;
   const inp = { style: { width: "100%", padding: "5px 8px", border: "1px solid #c8dfc8", borderRadius: 4, fontSize: 13, background: "#fafffe", boxSizing: "border-box" } };
 
@@ -1075,7 +1160,7 @@ function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVar
     <div style={{ border: "1.5px solid #b8d8b8", borderRadius: 8, padding: 16, marginBottom: 14, background: "#f8fdf8" }} className="farmer-form-pad">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap:"wrap", gap:8 }}>
         <div style={{ fontWeight: 700, color: "#1a4a1a", fontSize: 14 }}>Farmer #{index + 1}</div>
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
           <label style={{ display:"flex", alignItems:"center", gap:6, cursor:"pointer", background: farmer.billingDone?"#e8f5e9":"#fff3cd", border:`1.5px solid ${farmer.billingDone?"#2d6a2d":"#c8a000"}`, borderRadius:6, padding:"4px 10px" }}>
             <input type="checkbox" checked={!!farmer.billingDone}
               onChange={e=>onChange({...farmer, billingDone:e.target.checked, billingDoneDate: e.target.checked ? new Date().toISOString().split("T")[0] : ""})}
@@ -1085,6 +1170,61 @@ function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVar
               {farmer.billingDone ? `✔ Billed${farmer.billingDoneDate?" — "+fmtDate(farmer.billingDoneDate):""}` : "⏳ Billing Pending"}
             </span>
           </label>
+          <label style={{ display:"flex", alignItems:"center", gap:6, cursor:"pointer", background: farmer.partiallyBilled?"#fff3e0":"#f5f5f5", border:`1.5px solid ${farmer.partiallyBilled?"#e67e22":"#ccc"}`, borderRadius:6, padding:"4px 10px" }}>
+            <input type="checkbox" checked={!!farmer.partiallyBilled}
+              onChange={e=>onChange({...farmer, partiallyBilled:e.target.checked})}
+              style={{ width:14, height:14, cursor:"pointer" }}
+            />
+            <span style={{ fontSize:12, fontWeight:700, color: farmer.partiallyBilled?"#e67e22":"#888" }}>
+              🔶 Partially Billed (some crops still pending)
+            </span>
+          </label>
+          <button onClick={()=>{
+            const _isPaid = isVarietyPaid || (()=>true);
+            const _getRate = getVarietyRate || (()=>null);
+            const _getBillDate = getVarietyBillDate || (()=>BILL_DATE);
+            const cropsC = (farmer.crops||[]).map(c=>{
+              const area=parseFloat(c.area)||0, qty=parseFloat(c.quantity)||0;
+              const vRate = (c.rateOverride===true)?(parseFloat(c.ratePerUnit)||0):(_getRate(c.variety)||(parseFloat(c.ratePerUnit)||0));
+              const isPaidPass = c.result==="Pass" && _isPaid(c.variety);
+              return {value:isPaidPass?qty*vRate:0, foundation:area*FOUNDATION_RATE, transportation:qty};
+            });
+            const totalCropVal = cropsC.reduce((s,c)=>s+c.value,0);
+            const totalFound = cropsC.reduce((s,c)=>s+c.foundation,0);
+            const totalTrans = cropsC.reduce((s,c)=>s+c.transportation,0);
+            const advBillDate = (()=>{
+              const paidDates=(farmer.crops||[]).filter(c=>c.result==="Pass"&&_isPaid(c.variety)).map(c=>_getBillDate(c.variety));
+              return paidDates.length>0?paidDates.reduce((a,b)=>a<b?a:b):BILL_DATE;
+            })();
+            const rawAdv = farmer.advances||[];
+            const isIntermediateAdv = (a) => !!a.cfId && rawAdv.some(b=>b.carryForwardFrom===a.cfId);
+            const totalAdvWI = rawAdv.filter(a=>!isIntermediateAdv(a)).reduce((s,a)=>{
+              const {interest}=(a.compound?calcCompoundInterest:calcInterest)(parseFloat(a.amount)||0,parseFloat(a.interestRate)||0,a.date,a.tillDate||advBillDate);
+              return s+(parseFloat(a.amount)||0)+interest;
+            },0);
+            const rawJam = farmer.jammaEnabled ? (farmer.jammaEntries||[]) : [];
+            const isIntermediateJam = (j) => !!j.cfId && rawJam.some(k=>k.carryForwardFrom===j.cfId);
+            const totalJamWI = rawJam.filter(j=>!isIntermediateJam(j)).reduce((s,j)=>{
+              const amt=parseFloat(j.amount)||0;
+              const {interest}=calcInterest(amt,parseFloat(j.interestRate)||0,j.date||BILL_DATE,j.tillDate||BILL_DATE);
+              return s+amt+interest;
+            },0);
+            const history = farmer.settlementHistory||[];
+            const last = history.length>0?history[history.length-1]:{advanceUsed:0,foundationUsed:0,transportUsed:0,jammaUsed:0,runningDue:0};
+            const carryDue = last.runningDue>0?last.runningDue:0;
+            const settledSoFar = history.reduce((s,h)=>s+(parseFloat(h.seedAmount)||0),0);
+            const newCropVal = Math.max(0, totalCropVal-settledSoFar);
+            const dAdv=Math.max(0,totalAdvWI-(last.advanceUsed||0));
+            const dFound=Math.max(0,totalFound-(last.foundationUsed||0));
+            const dTrans=Math.max(0,totalTrans-(last.transportUsed||0));
+            const dJam=Math.max(0,totalJamWI-(last.jammaUsed||0));
+            if (newCropVal<=0 && carryDue<=0) { alert("Nothing new to settle right now — no newly paid crop value and no outstanding Due."); return; }
+            const netPaid = newCropVal-dAdv+dJam-dFound-dTrans-carryDue;
+            const entry = {date:new Date().toISOString().split("T")[0], seedAmount:newCropVal, deltaAdvance:dAdv, deltaFoundation:dFound, deltaTransport:dTrans, deltaJamma:dJam, carryForwardDue:carryDue, netPaid, runningDue:netPaid<0?Math.abs(netPaid):0, advanceUsed:totalAdvWI, foundationUsed:totalFound, transportUsed:totalTrans, jammaUsed:totalJamWI};
+            onChange({...farmer, settlementHistory:[...history, entry]});
+          }} style={{ background:"#2d5a8a", color:"#fff", border:"none", borderRadius:6, padding:"5px 12px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+            📌 Record This Payment
+          </button>
           <button onClick={onRemove} style={{ background: "#e74c3c", color: "#fff", border: "none", borderRadius: 4, padding: "3px 10px", cursor: "pointer", fontSize: 12 }}>Remove</button>
         </div>
       </div>
@@ -2888,7 +3028,7 @@ export default function App() {
                 <button key={t} onClick={()=>setTab(t)} style={{ padding:"7px 16px",border:"none",borderBottom:tab===t?"3px solid #2d6a2d":"3px solid transparent",background:"transparent",fontWeight:tab===t?700:400,color:tab===t?"#1a4a1a":"#555",cursor:"pointer",fontSize:13,marginBottom:-2 }}>{l}</button>
               ))}
             </div>
-            {tab==="form"&&currentFarmer&&<FarmerForm farmer={currentFarmer} index={selectedIdx} onChange={updated=>{const copy=[...farmers];copy[selectedIdx]=updated;updateFarmers(copy);}} onRemove={()=>deleteWithUndo("farmer", selectedIdx)} varietySettings={varietySettings} getVarietyRate={getVarietyRate} getVarietyType={getVarietyType} farmers={farmers} subOrgs={subOrgs} pesticideList={pesticideList} />}
+            {tab==="form"&&currentFarmer&&<FarmerForm farmer={currentFarmer} index={selectedIdx} onChange={updated=>{const copy=[...farmers];copy[selectedIdx]=updated;updateFarmers(copy);}} onRemove={()=>deleteWithUndo("farmer", selectedIdx)} varietySettings={varietySettings} getVarietyRate={getVarietyRate} getVarietyType={getVarietyType} isVarietyPaid={isVarietyPaid} getVarietyBillDate={getVarietyBillDate} farmers={farmers} subOrgs={subOrgs} pesticideList={pesticideList} />}
             {tab==="preview"&&currentFarmer&&(
               <div>
                 <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
