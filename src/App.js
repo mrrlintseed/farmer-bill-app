@@ -900,103 +900,124 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
           );
         })()}
 
-        <div style={{ background: _billMode==="partial" ? "#f0f5ff" : (balance >= 0 ? "#e8f5e9" : "#fdecea"), borderRadius: 6, padding: "12px 16px", border: "2px solid "+(_billMode==="partial"?"#2d5a8a":balance >= 0 ? "#2d6a2d" : "#e74c3c"), pageBreakInside: "avoid", breakInside: "avoid" }}>
-          {_billMode === "partial" ? (
-            <>
-              <div style={{ fontWeight:700, color:"#2d5a8a", marginBottom:8, fontSize:13 }}>
-                🧾 PARTIAL PAYMENT — {_selVars.join(", ")}
-              </div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr auto", gap:"4px 16px", fontSize:13 }}>
-                <div style={{ color:"#555" }}>Seed Amount for Selected Varieties</div>
-                <div style={{ textAlign:"right", fontWeight:800, fontSize:18, color:"#2d5a8a" }}>₹{totalSeedAmt.toLocaleString("en-IN")}</div>
-                <div style={{ color:"#888", fontSize:11 }}>Note: Record this amount as Jamma when sub-org returns it</div>
-                <div></div>
-              </div>
-            </>
-          ) : (
-            <>
-              <div style={{ fontWeight: 700, color: "#1a2a4a", marginBottom: 8, fontSize: 13 }}>SETTLEMENT SUMMARY</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "4px 16px", fontSize: 13 }}>
-
-                {/* To Pay — main billing amount */}
-                <div style={{ color: "#2d5a8a", fontWeight: 600 }}>💰 Seed Amount — To Pay Now</div>
-                <div style={{ textAlign: "right", fontWeight: 700, color: "#2d5a8a" }}>₹{totalToPayAmt.toLocaleString("en-IN")}</div>
-
-                {/* Settled — reference only */}
-                {totalSettledAmt > 0 && <>
-                  <div style={{ color: "#1a5c1a", fontSize: 12 }}>✔ Already Settled (previous bills)</div>
-                  <div style={{ textAlign: "right", fontWeight: 600, color: "#1a5c1a", fontSize: 12 }}>₹{totalSettledAmt.toLocaleString("en-IN")}</div>
-                </>}
-
-                {/* Pending — not counted */}
-                {totalPendingAmt > 0 && <>
-                  <div style={{ color: "#856404", fontSize: 12 }}>⏳ Pending — Company hasn't paid yet (not counted)</div>
-                  <div style={{ textAlign: "right", fontWeight: 600, color: "#856404", fontSize: 12 }}>₹{totalPendingAmt.toLocaleString("en-IN")}</div>
-                </>}
-
-                {/* Divider */}
-                <div style={{ borderTop: "1px dashed #c0c0c0", gridColumn: "1/-1", margin: "4px 0" }}></div>
-
-                {/* Deductions — only the growth since the last settlement (see Settlement History table below) */}
-                {carryForwardDue > 0 && <>
-                  <div style={{ color: "#c0392b", fontWeight: 600, background:"#fdecea", padding:"2px 6px", borderRadius:4 }}>⬅ Carried Forward Due (from {lastSettlement ? fmtDate(lastSettlement.date) : "last bill"})</div>
-                  <div style={{ textAlign: "right", fontWeight: 700, color: "#c0392b", background:"#fdecea", padding:"2px 6px", borderRadius:4 }}>− ₹{carryForwardDue.toLocaleString("en-IN")}</div>
-                </>}
-                <div style={{ color: "#555" }}>Advance + Interest</div>
-                <div style={{ textAlign: "right", fontWeight: 600, color: "#c0392b" }}>− ₹{deltaAdvance.toLocaleString("en-IN")}</div>
-
-                {deltaJamma > 0 && <>
-                  <div style={{ color: "#1a6a1a" }}>Jamma + Interest (partial payments received)</div>
-                  <div style={{ textAlign: "right", fontWeight: 600, color: "#1a6a1a" }}>+ ₹{deltaJamma.toLocaleString("en-IN")}</div>
-                </>}
-
-                {deltaFoundation > 0 && <>
-                  <div style={{ color: "#555" }}>Foundation (see table above)</div>
-                  <div style={{ textAlign: "right", fontWeight: 600, color: "#c0392b" }}>− ₹{deltaFoundation.toLocaleString("en-IN")}</div>
-                </>}
-
-                {deltaTransport > 0 && <>
-                  <div style={{ color: "#555" }}>Transportation</div>
-                  <div style={{ textAlign: "right", fontWeight: 600, color: "#c0392b" }}>− ₹{deltaTransport.toLocaleString("en-IN")}</div>
-                </>}
-
-                {/* Final balance */}
-                <div style={{ borderTop: "2px solid #2d5a8a", paddingTop: 6, marginTop: 4, fontWeight: 700, fontSize: 14, color: balance >= 0 ? "#1a4a1a" : "#c0392b" }}>
-                  {balance >= 0 ? "Payable to Sub-Org (This Bill)" : "Due from Sub-Org (This Bill)"}
-                </div>
-                <div style={{ borderTop: "2px solid #2d5a8a", paddingTop: 6, marginTop: 4, textAlign: "right", fontWeight: 800, fontSize: 18, color: balance >= 0 ? "#1a4a1a" : "#c0392b" }}>
-                  {balance >= 0 ? "" : "− "}₹{Math.abs(balance).toLocaleString("en-IN")}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-        {_billMode !== "partial" && settlementHistory.length > 0 && (
-          <div style={{ marginTop: 14 }}>
-            <div style={{ fontWeight: 700, color: "#1a2a4a", marginBottom: 6, fontSize: 13 }}>SETTLEMENT HISTORY</div>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5, minWidth: 620 }}>
-                <thead><tr style={{ background: "#1a2a4a", color: "#fff" }}>
-                  <TH ch="Date" /><TH ch="Companies Settled" /><TH ch="Seed Amount" /><TH ch="Advance" /><TH ch="Foundation" /><TH ch="Transport" /><TH ch="Due Carried In" /><TH ch="Result" />
-                </tr></thead>
-                <tbody>
-                  {settlementHistory.map((h,i) => (
-                    <tr key={i} style={{ background: i%2===0?"#f5f8ff":"#fff", borderBottom:"1px solid #e0e8f5" }}>
-                      <TD ch={fmtDate(h.date)} />
-                      <TD ch={h.companies||"—"} />
-                      <TD ch={"₹"+Math.round(h.seedAmount).toLocaleString("en-IN")} />
-                      <TD ch={h.deltaAdvance>0?"− ₹"+Math.round(h.deltaAdvance).toLocaleString("en-IN"):"—"} s={{color:h.deltaAdvance>0?"#c0392b":"#aaa"}} />
-                      <TD ch={h.deltaFoundation>0?"− ₹"+Math.round(h.deltaFoundation).toLocaleString("en-IN"):"—"} s={{color:h.deltaFoundation>0?"#c0392b":"#aaa"}} />
-                      <TD ch={h.deltaTransport>0?"− ₹"+Math.round(h.deltaTransport).toLocaleString("en-IN"):"—"} s={{color:h.deltaTransport>0?"#c0392b":"#aaa"}} />
-                      <TD ch={h.carryForwardDue>0?"− ₹"+Math.round(h.carryForwardDue).toLocaleString("en-IN"):"—"} s={{color:h.carryForwardDue>0?"#c0392b":"#aaa"}} />
-                      <TD ch={h.netPaid>=0?"✔ Paid ₹"+Math.round(h.netPaid).toLocaleString("en-IN"):"Due ₹"+Math.round(Math.abs(h.netPaid)).toLocaleString("en-IN")+" →"} s={{fontWeight:700,color:h.netPaid>=0?"#1a6a1a":"#c0392b"}} />
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        {_billMode === "partial" ? (
+          <div style={{ background: "#f0f5ff", borderRadius: 6, padding: "12px 16px", border: "2px solid #2d5a8a", pageBreakInside: "avoid", breakInside: "avoid" }}>
+            <div style={{ fontWeight:700, color:"#2d5a8a", marginBottom:8, fontSize:13 }}>
+              🧾 PARTIAL PAYMENT — {_selVars.join(", ")}
             </div>
-            <div style={{ fontSize: 10, color: "#999", marginTop: 4 }}>Payable amounts are paid out immediately and closed. A Due amount rolls into "Due Carried In" on the next row until it's fully offset by future seed money.</div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr auto", gap:"4px 16px", fontSize:13 }}>
+              <div style={{ color:"#555" }}>Seed Amount for Selected Varieties</div>
+              <div style={{ textAlign:"right", fontWeight:800, fontSize:18, color:"#2d5a8a" }}>₹{totalSeedAmt.toLocaleString("en-IN")}</div>
+              <div style={{ color:"#888", fontSize:11 }}>Note: Record this amount as Jamma when sub-org returns it</div>
+              <div></div>
+            </div>
           </div>
+        ) : (
+          <>
+            {/* Every past settlement stays visible as its own numbered, closed summary */}
+            {settlementHistory.map((h, i) => {
+              const wasPayable = h.netPaid >= 0;
+              return (
+                <div key={"settlement-"+i} style={{
+                  background: wasPayable ? "#f4fbf4" : "#fff5f3",
+                  borderRadius: 6, padding: "12px 16px",
+                  border: "2px solid "+(wasPayable ? "#6aa66a" : "#e07a6f"),
+                  pageBreakInside: "avoid", breakInside: "avoid", marginBottom: 12
+                }}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:8}}>
+                    <div style={{fontWeight:700,color:wasPayable?"#1a5c1a":"#a12d22",fontSize:13}}>SETTLEMENT SUMMARY {i+1}</div>
+                    <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",justifyContent:"flex-end"}}>
+                      <span style={{fontSize:10,fontWeight:700,color:wasPayable?"#1a5c1a":"#a12d22",background:wasPayable?"#e1f2e1":"#fde3df",padding:"3px 8px",borderRadius:12}}>
+                        {wasPayable ? "✔ Already Settled" : "↪ Due Carried Forward"}
+                      </span>
+                      <span style={{fontSize:10,fontWeight:600,color:"#555",background:"#fff",padding:"3px 8px",borderRadius:12,border:"1px solid #ccd7e5"}}>Date: {fmtDate(h.date)}</span>
+                    </div>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"5px 16px",fontSize:13}}>
+                    <div style={{color:"#1a5c1a",fontWeight:600}}>✔ Seed Amount — Already Settled on {fmtDate(h.date)}</div>
+                    <div style={{textAlign:"right",fontWeight:700,color:"#1a5c1a"}}>₹{Math.round(h.seedAmount).toLocaleString("en-IN")}</div>
+
+                    {(h.deltaAdvance>0||h.deltaFoundation>0||h.deltaTransport>0||h.deltaJamma>0||h.carryForwardDue>0) &&
+                      <div style={{borderTop:"1px dashed #c0c0c0",gridColumn:"1/-1",margin:"4px 0"}}></div>}
+
+                    {h.carryForwardDue>0 && <>
+                      <div style={{color:"#c0392b"}}>⬅ Carried Forward Due (from {settlementHistory[i-1]?fmtDate(settlementHistory[i-1].date):"before"})</div>
+                      <div style={{textAlign:"right",fontWeight:600,color:"#c0392b"}}>− ₹{Math.round(h.carryForwardDue).toLocaleString("en-IN")}</div>
+                    </>}
+                    {h.deltaAdvance>0 && <>
+                      <div style={{color:"#555"}}>Advance + Interest</div>
+                      <div style={{textAlign:"right",fontWeight:600,color:"#c0392b"}}>− ₹{Math.round(h.deltaAdvance).toLocaleString("en-IN")}</div>
+                    </>}
+                    {h.deltaJamma>0 && <>
+                      <div style={{color:"#1a6a1a"}}>Jamma + Interest</div>
+                      <div style={{textAlign:"right",fontWeight:600,color:"#1a6a1a"}}>+ ₹{Math.round(h.deltaJamma).toLocaleString("en-IN")}</div>
+                    </>}
+                    {h.deltaFoundation>0 && <>
+                      <div style={{color:"#555"}}>Foundation</div>
+                      <div style={{textAlign:"right",fontWeight:600,color:"#c0392b"}}>− ₹{Math.round(h.deltaFoundation).toLocaleString("en-IN")}</div>
+                    </>}
+                    {h.deltaTransport>0 && <>
+                      <div style={{color:"#555"}}>Transportation</div>
+                      <div style={{textAlign:"right",fontWeight:600,color:"#c0392b"}}>− ₹{Math.round(h.deltaTransport).toLocaleString("en-IN")}</div>
+                    </>}
+
+                    <div style={{borderTop:"2px solid "+(wasPayable?"#2d6a2d":"#c0392b"),paddingTop:6,marginTop:4,fontWeight:700,fontSize:14,color:wasPayable?"#1a4a1a":"#c0392b"}}>
+                      {wasPayable ? "Paid to Sub-Org" : "Due from Sub-Org (Carried Forward)"}
+                    </div>
+                    <div style={{borderTop:"2px solid "+(wasPayable?"#2d6a2d":"#c0392b"),paddingTop:6,marginTop:4,textAlign:"right",fontWeight:800,fontSize:18,color:wasPayable?"#1a4a1a":"#c0392b"}}>
+                      {wasPayable?"":"− "}₹{Math.round(Math.abs(h.netPaid)).toLocaleString("en-IN")}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* The currently-open settlement, if there's new seed money or an unpaid Due to show */}
+            {(totalToPayAmt > 0 || carryForwardDue > 0 || settlementHistory.length === 0) && (
+              <div style={{ background: balance >= 0 ? "#e8f5e9" : "#fdecea", borderRadius: 6, padding: "12px 16px", border: "2px solid "+(balance >= 0 ? "#2d6a2d" : "#e74c3c"), pageBreakInside: "avoid", breakInside: "avoid" }}>
+                <div style={{fontWeight:700,color:"#1a2a4a",marginBottom:8,fontSize:13}}>SETTLEMENT SUMMARY {settlementHistory.length+1} — {settlementHistory.length===0?"THIS BILL":"NEW PAYMENT (THIS BILL)"}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "4px 16px", fontSize: 13 }}>
+                  <div style={{ color: "#2d5a8a", fontWeight: 600 }}>💰 Seed Amount — To Pay Now</div>
+                  <div style={{ textAlign: "right", fontWeight: 700, color: "#2d5a8a" }}>₹{totalToPayAmt.toLocaleString("en-IN")}</div>
+
+                  {totalPendingAmt > 0 && <>
+                    <div style={{ color: "#856404", fontSize: 12 }}>⏳ Pending — Company hasn't paid yet (not counted)</div>
+                    <div style={{ textAlign: "right", fontWeight: 600, color: "#856404", fontSize: 12 }}>₹{totalPendingAmt.toLocaleString("en-IN")}</div>
+                  </>}
+
+                  <div style={{ borderTop: "1px dashed #c0c0c0", gridColumn: "1/-1", margin: "4px 0" }}></div>
+
+                  {carryForwardDue > 0 && <>
+                    <div style={{ color: "#c0392b", fontWeight: 600, background:"#fdecea", padding:"2px 6px", borderRadius:4 }}>⬅ Carried Forward Due (from {lastSettlement ? fmtDate(lastSettlement.date) : "last bill"})</div>
+                    <div style={{ textAlign: "right", fontWeight: 700, color: "#c0392b", background:"#fdecea", padding:"2px 6px", borderRadius:4 }}>− ₹{carryForwardDue.toLocaleString("en-IN")}</div>
+                  </>}
+                  {deltaAdvance > 0 && <>
+                    <div style={{ color: "#555" }}>Advance + Interest</div>
+                    <div style={{ textAlign: "right", fontWeight: 600, color: "#c0392b" }}>− ₹{deltaAdvance.toLocaleString("en-IN")}</div>
+                  </>}
+                  {deltaJamma > 0 && <>
+                    <div style={{ color: "#1a6a1a" }}>Jamma + Interest (partial payments received)</div>
+                    <div style={{ textAlign: "right", fontWeight: 600, color: "#1a6a1a" }}>+ ₹{deltaJamma.toLocaleString("en-IN")}</div>
+                  </>}
+                  {deltaFoundation > 0 && <>
+                    <div style={{ color: "#555" }}>Foundation (see table above)</div>
+                    <div style={{ textAlign: "right", fontWeight: 600, color: "#c0392b" }}>− ₹{deltaFoundation.toLocaleString("en-IN")}</div>
+                  </>}
+                  {deltaTransport > 0 && <>
+                    <div style={{ color: "#555" }}>Transportation</div>
+                    <div style={{ textAlign: "right", fontWeight: 600, color: "#c0392b" }}>− ₹{deltaTransport.toLocaleString("en-IN")}</div>
+                  </>}
+
+                  <div style={{ borderTop: "2px solid #2d5a8a", paddingTop: 6, marginTop: 4, fontWeight: 700, fontSize: 14, color: balance >= 0 ? "#1a4a1a" : "#c0392b" }}>
+                    {balance >= 0 ? "Payable to Sub-Org (This Bill)" : "Due from Sub-Org (This Bill)"}
+                  </div>
+                  <div style={{ borderTop: "2px solid #2d5a8a", paddingTop: 6, marginTop: 4, textAlign: "right", fontWeight: 800, fontSize: 18, color: balance >= 0 ? "#1a4a1a" : "#c0392b" }}>
+                    {balance >= 0 ? "" : "− "}₹{Math.abs(balance).toLocaleString("en-IN")}
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
         )}
         {so.comment && so.comment.trim() && (
           <div style={{ marginTop: 14, background: "#fff9e6", border: "1.5px solid #c8a000", borderRadius: 6, padding: "10px 14px" }}>
