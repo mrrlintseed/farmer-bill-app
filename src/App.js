@@ -1655,6 +1655,7 @@ export default function App() {
   const [printQueueIdx, setPrintQueueIdx] = useState(-1);
   const [printQueueTotal, setPrintQueueTotal] = useState(0);
   const [printQueueTelugu, setPrintQueueTelugu] = useState(false);
+  const [pendingPrintGroupBy, setPendingPrintGroupBy] = useState("none");
   const [printQueueOverride, setPrintQueueOverride] = useState(null); // translated farmer to render instead of the raw one
   const [previewTeluguOverride, setPreviewTeluguOverride] = useState(null); // translated farmer for single-bill preview — never written to real data
   const [subOrgTeluguOverride, setSubOrgTeluguOverride] = useState(null); // translated sub-org for bill preview — never written to real data
@@ -3134,14 +3135,74 @@ export default function App() {
                       XLSX.writeFile(wb, `pending_farmers_${new Date().toISOString().split("T")[0]}.xlsx`);
                     };
 
+                    // Pending farmers scoped to the companies/varieties currently selected for billing —
+                    // not every pending farmer in the whole app, just the ones relevant to this billing run.
+                    const pendingInSelection = selectedPrintVarieties.length > 0 ? filteredFarmers.filter(f=>!f.billingDone) : [];
+
+                    const printPendingList = (groupBy) => {
+                      if (pendingInSelection.length === 0) { alert("No pending farmers in the current variety/village selection."); return; }
+                      const rowHtml = (f) => {
+                        const bal = getFarmerBalance(f);
+                        return `<tr><td style="padding:5px 8px;border:1px solid #ddd;">${f.farmerNo||""}</td><td style="padding:5px 8px;border:1px solid #ddd;">${f.name||""}</td><td style="padding:5px 8px;border:1px solid #ddd;">${f.village||""}</td><td style="padding:5px 8px;border:1px solid #ddd;text-align:right;color:${bal>=0?"#1a6a1a":"#c0392b"};font-weight:600;">${bal>=0?"Pay ":"Due "}₹${Math.abs(Math.round(bal)).toLocaleString("en-IN")}</td></tr>`;
+                      };
+                      let bodyHtml = "";
+                      if (groupBy === "village") {
+                        const byVillage = {};
+                        pendingInSelection.forEach(f=>{ const v=f.village?.trim()||"No Village"; (byVillage[v]=byVillage[v]||[]).push(f); });
+                        Object.entries(byVillage).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([v,fs])=>{
+                          bodyHtml += `<tr><td colspan="4" style="background:#1a4a1a;color:#fff;padding:6px 8px;font-weight:700;">📍 ${v} — ${fs.length} farmer${fs.length===1?"":"s"}</td></tr>`;
+                          fs.sort((a,b)=>(a.name||"").localeCompare(b.name||"")).forEach(f=>bodyHtml+=rowHtml(f));
+                        });
+                      } else if (groupBy === "variety") {
+                        paidVarSelected.forEach(v=>{
+                          const fs = pendingInSelection.filter(f=>(f.crops||[]).some(c=>c.variety===v&&c.result==="Pass"&&isVarietyPaid(c.variety)));
+                          if (fs.length===0) return;
+                          bodyHtml += `<tr><td colspan="4" style="background:#1a4a1a;color:#fff;padding:6px 8px;font-weight:700;">🌱 ${v} — ${fs.length} farmer${fs.length===1?"":"s"}</td></tr>`;
+                          fs.sort((a,b)=>(a.name||"").localeCompare(b.name||"")).forEach(f=>bodyHtml+=rowHtml(f));
+                        });
+                      } else {
+                        pendingInSelection.sort((a,b)=>(a.village||"").localeCompare(b.village||"")||(a.name||"").localeCompare(b.name||"")).forEach(f=>bodyHtml+=rowHtml(f));
+                      }
+                      const title = "Pending Farmers — " + (paidVarSelected.length>0?paidVarSelected.join(", "):"Selected Varieties");
+                      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>${title}</title>
+                        <style>body{font-family:Georgia,serif;padding:20px;color:#222;}h2{color:#1a4a1a;}table{border-collapse:collapse;width:100%;font-size:12px;}th{background:#1a4a1a;color:#fff;padding:6px 8px;border:1px solid #ddd;text-align:left;}@media print{@page{margin:10mm;size:A4 portrait;}}</style>
+                        </head><body>
+                        <h2>🌾 ${title}</h2>
+                        <div style="font-size:12px;color:#555;margin-bottom:10px;">Bill Date: ${fmtDate(BILL_DATE)} | Total Pending: ${pendingInSelection.length} farmers</div>
+                        <table><thead><tr><th>Farmer No</th><th>Name</th><th>Village</th><th>Balance</th></tr></thead>
+                        <tbody>${bodyHtml}</tbody></table>
+                        <script>window.onload=function(){setTimeout(function(){window.print();},400);};<\/script>
+                        </body></html>`;
+                      const blob = new Blob([html], {type:"text/html;charset=utf-8"});
+                      const url = URL.createObjectURL(blob);
+                      window.open(url, "_blank");
+                      setTimeout(()=>URL.revokeObjectURL(url), 30000);
+                    };
+
                     return (
                       <div style={{ background:"#fff",border:"1px solid #d8e8d8",borderRadius:8,padding:"14px 16px",marginBottom:14 }}>
                         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8 }}>
                           <div style={{ fontSize:13,fontWeight:700,color:"#1a4a1a" }}>📋 Billing Status</div>
-                          <button onClick={exportPendingFarmers} style={{ background:"#2d5a8a",color:"#fff",border:"none",borderRadius:6,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer" }}>
-                            📊 Export Pending Farmers ({pendingFarmers.length})
-                          </button>
+                          <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                            <button onClick={exportPendingFarmers} style={{ background:"#2d5a8a",color:"#fff",border:"none",borderRadius:6,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer" }}>
+                              📊 Export All Pending ({pendingFarmers.length})
+                            </button>
+                            <select value={pendingPrintGroupBy} onChange={e=>setPendingPrintGroupBy(e.target.value)}
+                              style={{ padding:"7px 10px",borderRadius:6,border:"1px solid #2d6a2d",fontSize:12,fontWeight:600,color:"#1a4a1a",background:"#fff",cursor:"pointer" }}>
+                              <option value="none">Print: All (flat list)</option>
+                              <option value="village">Print: Grouped by Village</option>
+                              <option value="variety">Print: Grouped by Variety</option>
+                            </select>
+                            <button onClick={()=>printPendingList(pendingPrintGroupBy)} style={{ background:"#2d6a2d",color:"#fff",border:"none",borderRadius:6,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer" }}>
+                              🖨️ Print Pending ({pendingInSelection.length})
+                            </button>
+                          </div>
                         </div>
+                        {selectedPrintVarieties.length === 0 && (
+                          <div style={{ fontSize:11,color:"#856404",background:"#fff9e8",border:"1px solid #f0d080",borderRadius:6,padding:"6px 10px",marginBottom:10 }}>
+                            ⚠️ Select companies/varieties below first — the Print buttons only include pending farmers for whatever's selected, so this stays scoped to the billing run you're actually doing right now.
+                          </div>
+                        )}
                         <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:10 }}>
                           <div style={{ background:"#e8f5e9",border:"1.5px solid #2d6a2d",borderRadius:8,padding:"10px 12px" }}>
                             <div style={{ fontSize:11,color:"#2d6a2d",fontWeight:700 }}>✔ Billing Done</div>
