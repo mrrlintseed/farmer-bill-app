@@ -3145,33 +3145,57 @@ export default function App() {
                       XLSX.writeFile(wb, `pending_farmers_${new Date().toISOString().split("T")[0]}.xlsx`);
                     };
 
-                    // Pending farmers scoped to the companies/varieties currently selected for billing —
-                    // not every pending farmer in the whole app, just the ones relevant to this billing run.
-                    const pendingInSelection = selectedPrintVarieties.length > 0 ? filteredFarmers.filter(f=>!f.billingDone) : [];
+                    // Pending farmers scoped to the companies/varieties currently selected for billing.
+                    // A farmer only belongs here if they have genuinely NEW, unsettled paid crop value —
+                    // not just "this variety happens to be marked Paid somewhere in their crop list" —
+                    // since that paid value might already be recorded in a prior settlement.
+                    const farmerNewInfo = (f) => {
+                      const cropsC = (f.crops||[]).map(c=>{
+                        const qty=parseFloat(c.quantity)||0;
+                        const vRate = (c.rateOverride===true)?(parseFloat(c.ratePerUnit)||0):(getVarietyRate(c.variety)||(parseFloat(c.ratePerUnit)||0));
+                        const isPaidPass = c.result==="Pass" && isVarietyPaid(c.variety);
+                        return {variety:c.variety, value:isPaidPass?qty*vRate:0, matchesSelection: paidVarSelected.includes(c.variety) && isPaidPass};
+                      });
+                      const totalPaidVal = cropsC.reduce((s,c)=>s+c.value,0);
+                      const settledSoFar = (f.settlementHistory||[]).reduce((s,h)=>s+(parseFloat(h.seedAmount)||0),0);
+                      const newVal = Math.max(0, totalPaidVal - settledSoFar);
+                      const matchingVarieties = [...new Set(cropsC.filter(c=>c.matchesSelection).map(c=>c.variety))];
+                      return { newVal, matchingVarieties };
+                    };
+                    const pendingInSelection = selectedPrintVarieties.length > 0
+                      ? filteredFarmers
+                          .filter(f=>!f.billingDone)
+                          .map(f=>({f, ...farmerNewInfo(f)}))
+                          .filter(({newVal, matchingVarieties})=>newVal > 0 && matchingVarieties.length > 0)
+                      : [];
 
                     const printPendingList = (groupBy) => {
-                      if (pendingInSelection.length === 0) { alert("No pending farmers in the current variety/village selection."); return; }
-                      const rowHtml = (f) => {
+                      if (pendingInSelection.length === 0) { alert("No pending farmers with new unsettled payment in the current variety/village selection."); return; }
+                      const sorted = [...pendingInSelection].sort((a,b)=>{
+                        const na=parseInt((a.f.farmerNo||"").replace(/\D/g,""))||0, nb=parseInt((b.f.farmerNo||"").replace(/\D/g,""))||0;
+                        return na-nb || (a.f.farmerNo||"").localeCompare(b.f.farmerNo||"");
+                      });
+                      const rowHtml = ({f, matchingVarieties}) => {
                         const bal = getFarmerBalance(f);
-                        return `<tr><td style="padding:5px 8px;border:1px solid #ddd;">${f.farmerNo||""}</td><td style="padding:5px 8px;border:1px solid #ddd;">${f.name||""}</td><td style="padding:5px 8px;border:1px solid #ddd;">${f.village||""}</td><td style="padding:5px 8px;border:1px solid #ddd;text-align:right;color:${bal>=0?"#1a6a1a":"#c0392b"};font-weight:600;">${bal>=0?"Pay ":"Due "}₹${Math.abs(Math.round(bal)).toLocaleString("en-IN")}</td></tr>`;
+                        return `<tr><td style="padding:5px 8px;border:1px solid #ddd;">${f.farmerNo||""}</td><td style="padding:5px 8px;border:1px solid #ddd;">${f.name||""}</td><td style="padding:5px 8px;border:1px solid #ddd;">${f.fatherName||""}</td><td style="padding:5px 8px;border:1px solid #ddd;">${f.village||""}</td><td style="padding:5px 8px;border:1px solid #ddd;">${matchingVarieties.join(", ")}</td><td style="padding:5px 8px;border:1px solid #ddd;text-align:right;color:${bal>=0?"#1a6a1a":"#c0392b"};font-weight:600;">${bal>=0?"Pay ":"Due "}₹${Math.abs(Math.round(bal)).toLocaleString("en-IN")}</td></tr>`;
                       };
                       let bodyHtml = "";
                       if (groupBy === "village") {
                         const byVillage = {};
-                        pendingInSelection.forEach(f=>{ const v=f.village?.trim()||"No Village"; (byVillage[v]=byVillage[v]||[]).push(f); });
-                        Object.entries(byVillage).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([v,fs])=>{
-                          bodyHtml += `<tr><td colspan="4" style="background:#1a4a1a;color:#fff;padding:6px 8px;font-weight:700;">📍 ${v} — ${fs.length} farmer${fs.length===1?"":"s"}</td></tr>`;
-                          fs.sort((a,b)=>(a.name||"").localeCompare(b.name||"")).forEach(f=>bodyHtml+=rowHtml(f));
+                        sorted.forEach(item=>{ const v=item.f.village?.trim()||"No Village"; (byVillage[v]=byVillage[v]||[]).push(item); });
+                        Object.entries(byVillage).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([v,items])=>{
+                          bodyHtml += `<tr><td colspan="6" style="background:#1a4a1a;color:#fff;padding:6px 8px;font-weight:700;">📍 ${v} — ${items.length} farmer${items.length===1?"":"s"}</td></tr>`;
+                          items.forEach(item=>bodyHtml+=rowHtml(item));
                         });
                       } else if (groupBy === "variety") {
                         paidVarSelected.forEach(v=>{
-                          const fs = pendingInSelection.filter(f=>(f.crops||[]).some(c=>c.variety===v&&c.result==="Pass"&&isVarietyPaid(c.variety)));
-                          if (fs.length===0) return;
-                          bodyHtml += `<tr><td colspan="4" style="background:#1a4a1a;color:#fff;padding:6px 8px;font-weight:700;">🌱 ${v} — ${fs.length} farmer${fs.length===1?"":"s"}</td></tr>`;
-                          fs.sort((a,b)=>(a.name||"").localeCompare(b.name||"")).forEach(f=>bodyHtml+=rowHtml(f));
+                          const items = sorted.filter(item=>item.matchingVarieties.includes(v));
+                          if (items.length===0) return;
+                          bodyHtml += `<tr><td colspan="6" style="background:#1a4a1a;color:#fff;padding:6px 8px;font-weight:700;">🌱 ${v} — ${items.length} farmer${items.length===1?"":"s"}</td></tr>`;
+                          items.forEach(item=>bodyHtml+=rowHtml(item));
                         });
                       } else {
-                        pendingInSelection.sort((a,b)=>(a.village||"").localeCompare(b.village||"")||(a.name||"").localeCompare(b.name||"")).forEach(f=>bodyHtml+=rowHtml(f));
+                        sorted.forEach(item=>bodyHtml+=rowHtml(item));
                       }
                       const title = "Pending Farmers — " + (paidVarSelected.length>0?paidVarSelected.join(", "):"Selected Varieties");
                       const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>${title}</title>
@@ -3179,7 +3203,7 @@ export default function App() {
                         </head><body>
                         <h2>🌾 ${title}</h2>
                         <div style="font-size:12px;color:#555;margin-bottom:10px;">Bill Date: ${fmtDate(BILL_DATE)} | Total Pending: ${pendingInSelection.length} farmers</div>
-                        <table><thead><tr><th>Farmer No</th><th>Name</th><th>Village</th><th>Balance</th></tr></thead>
+                        <table><thead><tr><th>Farmer No</th><th>Name</th><th>Father</th><th>Village</th><th>Variety</th><th>Balance</th></tr></thead>
                         <tbody>${bodyHtml}</tbody></table>
                         <script>window.onload=function(){setTimeout(function(){window.print();},400);};<\/script>
                         </body></html>`;
