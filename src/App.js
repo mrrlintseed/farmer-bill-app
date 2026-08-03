@@ -1225,6 +1225,16 @@ function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVar
           }} style={{ background:"#2d5a8a", color:"#fff", border:"none", borderRadius:6, padding:"5px 12px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
             📌 Record This Payment
           </button>
+          {(farmer.settlementHistory||[]).length > 0 && (
+            <button onClick={()=>{
+              const history = farmer.settlementHistory||[];
+              const last = history[history.length-1];
+              if(!window.confirm(`Remove the most recent Settlement History entry?\n\nDate: ${fmtDate(last.date)}\nCrop Value: ₹${Math.round(last.seedAmount).toLocaleString("en-IN")}\nResult: ${last.netPaid>=0?"Paid ₹"+Math.round(last.netPaid).toLocaleString("en-IN"):"Due ₹"+Math.round(Math.abs(last.netPaid)).toLocaleString("en-IN")}`)) return;
+              onChange({...farmer, settlementHistory: history.slice(0,-1)});
+            }} style={{ background:"#fff", color:"#c0392b", border:"1px solid #e07a6f", borderRadius:6, padding:"5px 12px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+              ↩ Undo Last Settlement
+            </button>
+          )}
           <button onClick={onRemove} style={{ background: "#e74c3c", color: "#fff", border: "none", borderRadius: 4, padding: "3px 10px", cursor: "pointer", fontSize: 12 }}>Remove</button>
         </div>
       </div>
@@ -4096,7 +4106,7 @@ export default function App() {
                                       );
                                     })}
                                   </div>
-                                  <div style={{display:"flex",gap:8}}>
+                                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                                     <button onClick={()=>{
                                       const remaining=companyEntries.filter(([c,vs])=>!vs.every(v=>settledVars.includes(v)));
                                       const combinedAmt=remaining.reduce((s,[c,vs])=>s+vs.reduce((ss,v)=>ss+(so.growers||[]).filter(g=>g.variety===v&&g.result==="Pass").reduce((sss,g)=>sss+(parseFloat(g.packets)||0)*(getSubOrgVarietyRate(v)||parseFloat(g.rate)||0),0),0),0);
@@ -4105,6 +4115,19 @@ export default function App() {
                                       updateSO(update);
                                     }} style={{background:"#2d6a2d",color:"#fff",border:"none",borderRadius:5,padding:"5px 12px",fontSize:12,cursor:"pointer"}}>✔ All Settled</button>
                                     <button onClick={()=>setSettledVars([])} style={{background:"#fff",color:"#555",border:"1px solid #ccc",borderRadius:5,padding:"5px 12px",fontSize:12,cursor:"pointer"}}>☐ All To Pay</button>
+                                    {history.length > 0 && (
+                                      <button onClick={()=>{
+                                        const last = history[history.length-1];
+                                        if(!window.confirm(`Remove the most recent Settlement History entry?\n\nDate: ${fmtDate(last.date)}\nSeed Amount: ₹${Math.round(last.seedAmount).toLocaleString("en-IN")}\nResult: ${last.netPaid>=0?"Paid ₹"+Math.round(last.netPaid).toLocaleString("en-IN"):"Due ₹"+Math.round(Math.abs(last.netPaid)).toLocaleString("en-IN")}\n\nThis only removes the history record — it won't change which companies are currently checked as Settled.`)) return;
+                                        updateSO({...so, settlementHistory: history.slice(0,-1)});
+                                      }} style={{background:"#fff",color:"#c0392b",border:"1px solid #e07a6f",borderRadius:5,padding:"5px 12px",fontSize:12,cursor:"pointer"}}>↩ Undo Last Settlement</button>
+                                    )}
+                                    {history.length > 1 && (
+                                      <button onClick={()=>{
+                                        if(!window.confirm(`Remove ALL ${history.length} Settlement History entries for this sub-org?\n\nThis can't be undone — use this only if the history has drifted from repeated Settle/Unsettle clicks.`)) return;
+                                        updateSO({...so, settlementHistory: []});
+                                      }} style={{background:"#fff",color:"#c0392b",border:"1px solid #e07a6f",borderRadius:5,padding:"5px 12px",fontSize:12,cursor:"pointer"}}>🗑️ Clear All History ({history.length})</button>
+                                    )}
                                   </div>
                                   {pendingVars.length > 0 && (
                                     <div style={{marginTop:8,fontSize:11,color:"#856404"}}>
