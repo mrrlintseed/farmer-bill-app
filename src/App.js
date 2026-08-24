@@ -1783,6 +1783,11 @@ export default function App() {
     }
     const data = await resp.json();
     if (!data.translated) throw new Error("Translation service returned no translated text");
+    const nonEmpty = texts.map((t,i)=>({t,i})).filter(({t})=>t && t.trim());
+    const allUnchanged = nonEmpty.length>0 && nonEmpty.every(({t,i})=>(data.translated[i]||"").trim()===t.trim());
+    if (allUnchanged) {
+      throw new Error(data.errors?.length ? data.errors[0] : "Google Translate did not translate any text (returned it unchanged)");
+    }
     return data.translated;
   };
 
