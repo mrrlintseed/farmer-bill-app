@@ -1771,28 +1771,36 @@ export default function App() {
 
   // Translate text to Telugu via Vercel serverless function
   const translateToTelugu = async (texts) => {
-    try {
-      const resp = await fetch("/api/translate", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({texts})
-      });
-      const data = await resp.json();
-      return data.translated || texts;
-    } catch(e) { return texts; }
+    const resp = await fetch("/api/translate", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({texts})
+    });
+    if (!resp.ok) {
+      let detail = "";
+      try { const errBody = await resp.json(); detail = errBody?.error || errBody?.message || ""; } catch {}
+      throw new Error(`Translation service returned ${resp.status}${detail?": "+detail:""}`);
+    }
+    const data = await resp.json();
+    if (!data.translated) throw new Error("Translation service returned no translated text");
+    return data.translated;
   };
 
   // Translate text back to English
   const translateToEnglish = async (texts) => {
-    try {
-      const resp = await fetch("/api/translate", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({texts, to: "en", from: "te"})
-      });
-      const data = await resp.json();
-      return data.translated || texts;
-    } catch(e) { return texts; }
+    const resp = await fetch("/api/translate", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({texts, to: "en", from: "te"})
+    });
+    if (!resp.ok) {
+      let detail = "";
+      try { const errBody = await resp.json(); detail = errBody?.error || errBody?.message || ""; } catch {}
+      throw new Error(`Translation service returned ${resp.status}${detail?": "+detail:""}`);
+    }
+    const data = await resp.json();
+    if (!data.translated) throw new Error("Translation service returned no translated text");
+    return data.translated;
   };
   const [varietySettings, setVarietySettings] = useState(() => {
     try { const s = localStorage.getItem("variety_settings"); return s ? JSON.parse(s) : {}; } catch { return {}; }
@@ -5573,7 +5581,7 @@ export default function App() {
                       const translated = await translateToTelugu(texts);
                       const [tName,tFather,tVillage,tCareOf] = translated;
                       setPrintQueueOverride({...f, name:tName||f.name, fatherName:tFather||f.fatherName, village:tVillage||f.village, careOf:tCareOf||f.careOf});
-                    } catch(err) { setPrintQueueOverride(null); }
+                    } catch(err) { alert("Translation failed for "+(f.name||"a farmer")+": "+err.message); setPrintQueueOverride(null); }
                   } else {
                     setPrintQueueOverride(null);
                   }
