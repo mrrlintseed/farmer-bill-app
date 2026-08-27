@@ -1210,6 +1210,20 @@ function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVar
               return s+amt+interest;
             },0);
             const history = farmer.settlementHistory||[];
+            // Same protection as Sub-Orgs: if this farmer was already marked Billed with no
+            // real history yet (i.e. relying on the live-recalculated migration display),
+            // freeze that as a real Settlement 1 first, using what's currently shown — so it
+            // stops silently changing later, then treat this click as having nothing further
+            // new to add right now (since there's no way to separate "already billed" crop
+            // value from "brand new" without a real record to anchor to).
+            if (history.length===0 && farmer.billingDone && totalCropVal>0) {
+              const entry = {date:farmer.billingDoneDate||new Date().toISOString().split("T")[0], seedAmount:totalCropVal, deltaAdvance:totalAdvWI, deltaFoundation:totalFound, deltaTransport:totalTrans, deltaJamma:totalJamWI, carryForwardDue:0,
+                netPaid: totalCropVal-totalAdvWI+totalJamWI-totalFound-totalTrans, runningDue: Math.max(0, totalAdvWI+totalFound+totalTrans-totalJamWI-totalCropVal),
+                advanceUsed:totalAdvWI, foundationUsed:totalFound, transportUsed:totalTrans, jammaUsed:totalJamWI, isMigrated:true};
+              onChange({...farmer, settlementHistory:[entry]});
+              alert("This farmer's previous billing has been locked in as Settlement 1. If there's a newly-paid crop to record, click \"Record This Payment\" again.");
+              return;
+            }
             const last = history.length>0?history[history.length-1]:{advanceUsed:0,foundationUsed:0,transportUsed:0,jammaUsed:0,runningDue:0};
             const carryDue = last.runningDue>0?last.runningDue:0;
             const settledSoFar = history.reduce((s,h)=>s+(parseFloat(h.seedAmount)||0),0);
@@ -4075,19 +4089,32 @@ export default function App() {
                                 const history = so.settlementHistory||[];
                                 const lastEntry = history.length>0 ? history[history.length-1] : null;
                                 const lastCp = lastEntry || {advanceUsed:0,foundationUsed:0,transportUsed:0,jammaUsed:0};
+                                const zeroCp = {advanceUsed:0,foundationUsed:0,transportUsed:0,jammaUsed:0,runningDue:0};
                                 const carryForwardDue = lastEntry && lastEntry.runningDue>0 ? lastEntry.runningDue : 0;
-                                const buildSettlementEntry=(companiesLabel,seedAmount)=>{
-                                  const deltaAdv=Math.max(0,cpAdvWithInt-lastCp.advanceUsed);
-                                  const deltaFound=Math.max(0,cpFoundation-lastCp.foundationUsed);
-                                  const deltaTrans=Math.max(0,cpTransport-lastCp.transportUsed);
-                                  const deltaJam=Math.max(0,cpJammaWithInt-lastCp.jammaUsed);
+                                const buildEntryFrom = (checkpoint,companiesLabel,seedAmount) => {
+                                  const deltaAdv=Math.max(0,cpAdvWithInt-checkpoint.advanceUsed);
+                                  const deltaFound=Math.max(0,cpFoundation-checkpoint.foundationUsed);
+                                  const deltaTrans=Math.max(0,cpTransport-checkpoint.transportUsed);
+                                  const deltaJam=Math.max(0,cpJammaWithInt-checkpoint.jammaUsed);
+                                  const carryFwd = checkpoint.runningDue>0?checkpoint.runningDue:0;
                                   // Due that wasn't paid off last time rolls into this settlement's deduction.
                                   // If the result is still negative, it stays a running Due for the NEXT settlement.
                                   // If it comes out positive, that's paid out now and resets to zero.
-                                  const netPaid=seedAmount-deltaAdv+deltaJam-deltaFound-deltaTrans-carryForwardDue;
+                                  const netPaid=seedAmount-deltaAdv+deltaJam-deltaFound-deltaTrans-carryFwd;
                                   const runningDue=netPaid<0?Math.abs(netPaid):0;
-                                  return {date:BILL_DATE,companies:companiesLabel,seedAmount,deltaAdvance:deltaAdv,deltaFoundation:deltaFound,deltaTransport:deltaTrans,deltaJamma:deltaJam,carryForwardDue,netPaid,runningDue,
+                                  return {date:BILL_DATE,companies:companiesLabel,seedAmount,deltaAdvance:deltaAdv,deltaFoundation:deltaFound,deltaTransport:deltaTrans,deltaJamma:deltaJam,carryForwardDue:carryFwd,netPaid,runningDue,
                                     advanceUsed:cpAdvWithInt,foundationUsed:cpFoundation,transportUsed:cpTransport,jammaUsed:cpJammaWithInt};
+                                };
+                                const buildSettlementEntry=(companiesLabel,seedAmount)=>buildEntryFrom(lastCp,companiesLabel,seedAmount); // kept for compatibility, unused directly now
+                                // If this sub-org has companies already marked Settled but no real history yet
+                                // (i.e. it's been relying on the live-recalculated migration display), freeze
+                                // that into a permanent Settlement 1 record NOW — before adding anything new —
+                                // so it stops silently changing whenever current totals shift later.
+                                const historyWithMigrationLocked = () => {
+                                  if (history.length > 0 || settledVars.length === 0) return history;
+                                  const alreadySettledAmt = settledVars.reduce((s,v)=>s+(so.growers||[]).filter(g=>g.variety===v&&g.result==="Pass").reduce((ss,g)=>ss+(parseFloat(g.packets)||0)*(getSubOrgVarietyRate(v)||parseFloat(g.rate)||0),0),0);
+                                  if (alreadySettledAmt <= 0) return history;
+                                  return [buildEntryFrom(zeroCp, "Previously settled (before history tracking)", alreadySettledAmt)];
                                 };
                                 return (
                                 <div style={{marginBottom:8}}>
@@ -4109,7 +4136,11 @@ export default function App() {
                                             const willBeSettled=!isSettled;
                                             const newSettledVars = isSettled?settledVars.filter(x=>!vars.includes(x)):[...new Set([...settledVars,...vars])];
                                             const update = {...so, _settledVars: newSettledVars};
-                                            if(willBeSettled) update.settlementHistory = [...history, buildSettlementEntry(company,amt)];
+                                            if(willBeSettled) {
+                                              const baseHistory = historyWithMigrationLocked();
+                                              const cp = baseHistory.length>0 ? baseHistory[baseHistory.length-1] : zeroCp;
+                                              update.settlementHistory = [...baseHistory, buildEntryFrom(cp, company, amt)];
+                                            }
                                             updateSO(update);
                                           }}>
                                             <div style={{width:18,height:18,borderRadius:3,border:"2px solid "+(isSettled?"#2d6a2d":"#aaa"),background:isSettled?"#2d6a2d":"#fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:12,fontWeight:700,flexShrink:0}}>{isSettled?"✔":""}</div>
@@ -4148,7 +4179,11 @@ export default function App() {
                                       const remaining=companyEntries.filter(([c,vs])=>!vs.every(v=>settledVars.includes(v)));
                                       const combinedAmt=remaining.reduce((s,[c,vs])=>s+vs.reduce((ss,v)=>ss+(so.growers||[]).filter(g=>g.variety===v&&g.result==="Pass").reduce((sss,g)=>sss+(parseFloat(g.packets)||0)*(getSubOrgVarietyRate(v)||parseFloat(g.rate)||0),0),0),0);
                                       const update = {...so, _settledVars: paidVars};
-                                      if(remaining.length>0) update.settlementHistory = [...history, buildSettlementEntry(remaining.map(([c])=>c).join(", "),combinedAmt)];
+                                      if(remaining.length>0) {
+                                        const baseHistory = historyWithMigrationLocked();
+                                        const cp = baseHistory.length>0 ? baseHistory[baseHistory.length-1] : zeroCp;
+                                        update.settlementHistory = [...baseHistory, buildEntryFrom(cp, remaining.map(([c])=>c).join(", "), combinedAmt)];
+                                      }
                                       updateSO(update);
                                     }} style={{background:"#2d6a2d",color:"#fff",border:"none",borderRadius:5,padding:"5px 12px",fontSize:12,cursor:"pointer"}}>✔ All Settled</button>
                                     <button onClick={()=>setSettledVars([])} style={{background:"#fff",color:"#555",border:"1px solid #ccc",borderRadius:5,padding:"5px 12px",fontSize:12,cursor:"pointer"}}>☐ All To Pay</button>
