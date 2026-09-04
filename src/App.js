@@ -575,6 +575,34 @@ function BillPreview({ farmer, varietySettings, getVarietyBillDate, isVarietyPai
                 <div style={{borderTop:"2px solid "+(wasPayable?"#2d6a2d":"#c0392b"),paddingTop:6,marginTop:4,textAlign:"right",fontWeight:800,fontSize:18,color:wasPayable?"#1a4a1a":"#c0392b"}}>
                   {wasPayable?"":"− "}₹{Math.round(Math.abs(h.netPaid)).toLocaleString("en-IN")}
                 </div>
+                {wasPayable && (()=>{
+                  const paymentsLog = (h.payments&&h.payments.length>0) ? h.payments : (h.amountPaid>0 ? [{date:h.date, amount:h.amountPaid}] : []);
+                  const totalPaid = paymentsLog.reduce((s,p)=>s+(parseFloat(p.amount)||0),0);
+                  const pending = h.netPaid - totalPaid;
+                  if (paymentsLog.length===0 && pending<=0.5) return null;
+                  return (
+                    <div style={{gridColumn:"1/-1", marginTop:4, background:"#f9fdf9", borderRadius:6, padding:"6px 10px"}}>
+                      {paymentsLog.length>0 && (
+                        <div style={{fontSize:11,color:"#1a6a1a",marginBottom:pending>0.5?4:0}}>
+                          <div style={{fontWeight:700,marginBottom:2}}>💵 Payments Received:</div>
+                          {paymentsLog.map((p,pi)=>(
+                            <div key={pi} style={{display:"flex",justifyContent:"space-between"}}>
+                              <span>₹{Math.round(p.amount).toLocaleString("en-IN")} on {fmtDate(p.date)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {pending>0.5 ? (
+                        <div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:700,color:"#856404"}}>
+                          <span>⏳ Pending Payment (to pay later)</span>
+                          <span>₹{Math.round(pending).toLocaleString("en-IN")}</span>
+                        </div>
+                      ) : (
+                        <div style={{fontSize:11,fontWeight:700,color:"#1a6a1a"}}>✔ Fully Paid</div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           );
@@ -1146,7 +1174,7 @@ function SubOrgBill({ so, isSubOrgVarietyPaid, isSubOrgVarietySettled, isSubOrgV
 }
 
 // ─── Farmer Form ────────────────────────────────────────────────
-function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVarietyRate, getVarietyType, isVarietyPaid, getVarietyBillDate, farmers, subOrgs, pesticideList }) {
+function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVarietyRate, getVarietyType, isVarietyPaid, getVarietyBillDate, recordFarmerPayment, farmers, subOrgs, pesticideList }) {
   const MAX_ADV = 10, MAX_CROP = 3;
   const inp = { style: { width: "100%", padding: "5px 8px", border: "1px solid #c8dfc8", borderRadius: 4, fontSize: 13, background: "#fafffe", boxSizing: "border-box" } };
 
@@ -1180,62 +1208,26 @@ function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVar
             </span>
           </label>
           <button onClick={()=>{
-            const _isPaid = isVarietyPaid || (()=>true);
-            const _getRate = getVarietyRate || (()=>null);
-            const _getBillDate = getVarietyBillDate || (()=>BILL_DATE);
-            const cropsC = (farmer.crops||[]).map(c=>{
-              const area=parseFloat(c.area)||0, qty=parseFloat(c.quantity)||0;
-              const vRate = (c.rateOverride===true)?(parseFloat(c.ratePerUnit)||0):(_getRate(c.variety)||(parseFloat(c.ratePerUnit)||0));
-              const isPaidPass = c.result==="Pass" && _isPaid(c.variety);
-              return {value:isPaidPass?qty*vRate:0, foundation:area*FOUNDATION_RATE, transportation:qty};
-            });
-            const totalCropVal = cropsC.reduce((s,c)=>s+c.value,0);
-            const totalFound = cropsC.reduce((s,c)=>s+c.foundation,0);
-            const totalTrans = cropsC.reduce((s,c)=>s+c.transportation,0);
-            const advBillDate = (()=>{
-              const paidDates=(farmer.crops||[]).filter(c=>c.result==="Pass"&&_isPaid(c.variety)).map(c=>_getBillDate(c.variety));
-              return paidDates.length>0?paidDates.reduce((a,b)=>a<b?a:b):BILL_DATE;
-            })();
-            const rawAdv = farmer.advances||[];
-            const isIntermediateAdv = (a) => !!a.cfId && rawAdv.some(b=>b.carryForwardFrom===a.cfId);
-            const totalAdvWI = rawAdv.filter(a=>!isIntermediateAdv(a)).reduce((s,a)=>{
-              const {interest}=(a.compound?calcCompoundInterest:calcInterest)(parseFloat(a.amount)||0,parseFloat(a.interestRate)||0,a.date,a.tillDate||advBillDate);
-              return s+(parseFloat(a.amount)||0)+interest;
-            },0);
-            const rawJam = farmer.jammaEnabled ? (farmer.jammaEntries||[]) : [];
-            const isIntermediateJam = (j) => !!j.cfId && rawJam.some(k=>k.carryForwardFrom===j.cfId);
-            const totalJamWI = rawJam.filter(j=>!isIntermediateJam(j)).reduce((s,j)=>{
-              const amt=parseFloat(j.amount)||0;
-              const {interest}=calcInterest(amt,parseFloat(j.interestRate)||0,j.date||BILL_DATE,j.tillDate||BILL_DATE);
-              return s+amt+interest;
-            },0);
-            const history = farmer.settlementHistory||[];
-            // Same protection as Sub-Orgs: if this farmer was already marked Billed with no
-            // real history yet (i.e. relying on the live-recalculated migration display),
-            // freeze that as a real Settlement 1 first, using what's currently shown — so it
-            // stops silently changing later, then treat this click as having nothing further
-            // new to add right now (since there's no way to separate "already billed" crop
-            // value from "brand new" without a real record to anchor to).
-            if (history.length===0 && farmer.billingDone && totalCropVal>0) {
-              const entry = {date:farmer.billingDoneDate||new Date().toISOString().split("T")[0], seedAmount:totalCropVal, deltaAdvance:totalAdvWI, deltaFoundation:totalFound, deltaTransport:totalTrans, deltaJamma:totalJamWI, carryForwardDue:0,
-                netPaid: totalCropVal-totalAdvWI+totalJamWI-totalFound-totalTrans, runningDue: Math.max(0, totalAdvWI+totalFound+totalTrans-totalJamWI-totalCropVal),
-                advanceUsed:totalAdvWI, foundationUsed:totalFound, transportUsed:totalTrans, jammaUsed:totalJamWI, isMigrated:true};
-              onChange({...farmer, settlementHistory:[entry]});
-              alert("This farmer's previous billing has been locked in as Settlement 1. If there's a newly-paid crop to record, click \"Record This Payment\" again.");
-              return;
+            const today = new Date().toISOString().split("T")[0];
+            // Peek at what would be owed (capped at the full amount), so the prompt can
+            // show a sensible default without actually recording anything yet.
+            const preview = recordFarmerPayment(farmer, Number.MAX_SAFE_INTEGER, today);
+            if (preview.error) { alert(preview.error); return; }
+            const owedNow = preview.applied;
+            let amountToRecord = owedNow;
+            if (owedNow > 0) {
+              const input = window.prompt(`This settlement is Payable ₹${Math.round(owedNow).toLocaleString("en-IN")} to the farmer.\n\nHow much are you actually paying right now?\n(Enter a smaller number if you're only paying part of it now — the rest will be tracked as a Pending Payment you can settle later.)`, Math.round(owedNow));
+              if (input === null) return;
+              const val = parseFloat(input);
+              if (isNaN(val) || val < 0) { alert("Please enter a valid amount."); return; }
+              amountToRecord = val;
             }
-            const last = history.length>0?history[history.length-1]:{advanceUsed:0,foundationUsed:0,transportUsed:0,jammaUsed:0,runningDue:0};
-            const carryDue = last.runningDue>0?last.runningDue:0;
-            const settledSoFar = history.reduce((s,h)=>s+(parseFloat(h.seedAmount)||0),0);
-            const newCropVal = Math.max(0, totalCropVal-settledSoFar);
-            const dAdv=Math.max(0,totalAdvWI-(last.advanceUsed||0));
-            const dFound=Math.max(0,totalFound-(last.foundationUsed||0));
-            const dTrans=Math.max(0,totalTrans-(last.transportUsed||0));
-            const dJam=Math.max(0,totalJamWI-(last.jammaUsed||0));
-            if (newCropVal<=0 && carryDue<=0) { alert("Nothing new to settle right now — no newly paid crop value and no outstanding Due."); return; }
-            const netPaid = newCropVal-dAdv+dJam-dFound-dTrans-carryDue;
-            const entry = {date:new Date().toISOString().split("T")[0], seedAmount:newCropVal, deltaAdvance:dAdv, deltaFoundation:dFound, deltaTransport:dTrans, deltaJamma:dJam, carryForwardDue:carryDue, netPaid, runningDue:netPaid<0?Math.abs(netPaid):0, advanceUsed:totalAdvWI, foundationUsed:totalFound, transportUsed:totalTrans, jammaUsed:totalJamWI};
-            onChange({...farmer, settlementHistory:[...history, entry]});
+            const result = recordFarmerPayment(farmer, amountToRecord, today);
+            if (result.error) { alert(result.error); return; }
+            onChange(result.farmer);
+            if (farmer.billingDone && (farmer.settlementHistory||[]).length===0) {
+              alert("This farmer's previous billing has been locked in as Settlement 1.");
+            }
           }} style={{ background:"#2d5a8a", color:"#fff", border:"none", borderRadius:6, padding:"5px 12px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
             📌 Record This Payment
           </button>
@@ -1249,6 +1241,38 @@ function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVar
               ↩ Undo Last Settlement
             </button>
           )}
+          {(()=>{
+            const h = farmer.settlementHistory||[];
+            const last = h[h.length-1];
+            if (!last || last.netPaid<0) return null;
+            const paid=(last.payments||[]).reduce((s,p)=>s+(parseFloat(p.amount)||0),0);
+            const pending = Math.max(0, last.netPaid-paid);
+            if (pending<=0.5) return null;
+            const today = new Date().toISOString().split("T")[0];
+            return (
+              <>
+                <button onClick={()=>{
+                  const input = window.prompt(`Pending Payment is ₹${Math.round(pending).toLocaleString("en-IN")}.\n\nHow much are you paying now?`, Math.round(pending));
+                  if (input === null) return;
+                  const val = parseFloat(input);
+                  if (isNaN(val) || val <= 0) { alert("Please enter a valid amount."); return; }
+                  const result = recordFarmerPayment(farmer, val, today);
+                  if (result.error) { alert(result.error); return; }
+                  onChange(result.farmer);
+                }} style={{ background:"#fff", color:"#856404", border:"1px solid #f0d080", borderRadius:6, padding:"5px 12px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                  💵 Settle a Pending Payment
+                </button>
+                <button onClick={()=>{
+                  if(!window.confirm(`Mark the full ₹${Math.round(pending).toLocaleString("en-IN")} pending payment as paid today (${fmtDate(today)})?`)) return;
+                  const result = recordFarmerPayment(farmer, pending, today);
+                  if (result.error) { alert(result.error); return; }
+                  onChange(result.farmer);
+                }} style={{ background:"#e8f5e9", color:"#1a6a1a", border:"1px solid #2d6a2d", borderRadius:6, padding:"5px 12px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                  ✅ Mark Fully Paid
+                </button>
+              </>
+            );
+          })()}
           <button onClick={onRemove} style={{ background: "#e74c3c", color: "#fff", border: "none", borderRadius: 4, padding: "3px 10px", cursor: "pointer", fontSize: 12 }}>Remove</button>
         </div>
       </div>
@@ -1941,6 +1965,79 @@ export default function App() {
     const jamWI=(f.jammaEnabled?f.jammaEntries||[]:[]).reduce((s,j)=>{const bd=j.tillDate||billDate;const {interest}=calcInterest(parseFloat(j.amount)||0,parseFloat(j.interestRate)||0,j.date||BILL_DATE,bd);return s+(parseFloat(j.amount)||0)+interest;},0);
     return cropVal-advWI+jamWI-found-trans;
   };
+  // Records a cash payment for a farmer — creates/locks in a Settlement entry if needed
+  // (using the same migration-freeze logic as the single-farmer button), or applies the
+  // payment to whichever is due: an existing pending balance first, then new unsettled
+  // crop value. Payments are stored as a dated log (not a single running total) so the
+  // history stays clear even long after the fact. Returns the updated farmer object —
+  // does not call onChange/updateFarmers itself, so callers control when to save.
+  const recordFarmerPayment = (farmer, amountPaidNow, paymentDate) => {
+    const cropsC = (farmer.crops||[]).map(c=>{
+      const area=parseFloat(c.area)||0, qty=parseFloat(c.quantity)||0;
+      const vRate=(c.rateOverride===true)?(parseFloat(c.ratePerUnit)||0):(getVarietyRate(c.variety)||(parseFloat(c.ratePerUnit)||0));
+      const isPaidPass=c.result==="Pass"&&isVarietyPaid(c.variety);
+      return {value:isPaidPass?qty*vRate:0, foundation:area*FOUNDATION_RATE, transportation:qty};
+    });
+    const totalCropVal=cropsC.reduce((s,c)=>s+c.value,0);
+    const totalFound=cropsC.reduce((s,c)=>s+c.foundation,0);
+    const totalTrans=cropsC.reduce((s,c)=>s+c.transportation,0);
+    const advBillDate=(()=>{
+      const paidDates=(farmer.crops||[]).filter(c=>c.result==="Pass"&&isVarietyPaid(c.variety)).map(c=>getVarietyBillDate(c.variety));
+      return paidDates.length>0?paidDates.reduce((a,b)=>a<b?a:b):BILL_DATE;
+    })();
+    const rawAdv=farmer.advances||[];
+    const isIntermediateAdv=(a)=>!!a.cfId&&rawAdv.some(b=>b.carryForwardFrom===a.cfId);
+    const totalAdvWI=rawAdv.filter(a=>!isIntermediateAdv(a)).reduce((s,a)=>{
+      const {interest}=(a.compound?calcCompoundInterest:calcInterest)(parseFloat(a.amount)||0,parseFloat(a.interestRate)||0,a.date,a.tillDate||advBillDate);
+      return s+(parseFloat(a.amount)||0)+interest;
+    },0);
+    const rawJam=farmer.jammaEnabled?(farmer.jammaEntries||[]):[];
+    const isIntermediateJam=(j)=>!!j.cfId&&rawJam.some(k=>k.carryForwardFrom===j.cfId);
+    const totalJamWI=rawJam.filter(j=>!isIntermediateJam(j)).reduce((s,j)=>{
+      const amt=parseFloat(j.amount)||0;
+      const {interest}=calcInterest(amt,parseFloat(j.interestRate)||0,j.date||BILL_DATE,j.tillDate||BILL_DATE);
+      return s+amt+interest;
+    },0);
+    const history=farmer.settlementHistory||[];
+
+    // No history yet — freeze current state as Settlement 1 (matches migration display)
+    if (history.length===0) {
+      if (totalCropVal<=0) return {farmer, applied:0, error:"No paid crop value to settle yet"};
+      const netPaidM=totalCropVal-totalAdvWI+totalJamWI-totalFound-totalTrans;
+      const paidNow=Math.max(0,Math.min(amountPaidNow,Math.max(0,netPaidM)));
+      const entry={date:farmer.billingDoneDate||paymentDate, seedAmount:totalCropVal, deltaAdvance:totalAdvWI, deltaFoundation:totalFound, deltaTransport:totalTrans, deltaJamma:totalJamWI, carryForwardDue:0,
+        netPaid:netPaidM, payments:paidNow>0?[{date:paymentDate,amount:paidNow}]:[], runningDue:Math.max(0,totalAdvWI+totalFound+totalTrans-totalJamWI-totalCropVal),
+        advanceUsed:totalAdvWI, foundationUsed:totalFound, transportUsed:totalTrans, jammaUsed:totalJamWI, isMigrated:!!farmer.billingDone};
+      return {farmer:{...farmer, settlementHistory:[entry]}, applied:paidNow};
+    }
+
+    // History exists — apply to an existing pending balance first, if any
+    const last=history[history.length-1];
+    const lastPaid=(last.payments||[]).reduce((s,p)=>s+(parseFloat(p.amount)||0),0) || (last.amountPaid??(last.netPaid>=0?last.netPaid:0));
+    const lastPending=last.netPaid>=0?Math.max(0,last.netPaid-lastPaid):0;
+    if (lastPending>0.5) {
+      const paidNow=Math.max(0,Math.min(amountPaidNow,lastPending));
+      if (paidNow<=0) return {farmer, applied:0, error:"Enter an amount greater than 0"};
+      const newHistory=[...history];
+      newHistory[history.length-1]={...last, payments:[...(last.payments||[]),{date:paymentDate,amount:paidNow}]};
+      return {farmer:{...farmer, settlementHistory:newHistory}, applied:paidNow};
+    }
+
+    // Last entry fully paid — check for new unsettled crop value
+    const settledSoFar=history.reduce((s,h)=>s+(parseFloat(h.seedAmount)||0),0);
+    const newCropVal=Math.max(0,totalCropVal-settledSoFar);
+    const carryDue=last.runningDue>0?last.runningDue:0;
+    const dAdv=Math.max(0,totalAdvWI-(last.advanceUsed||0));
+    const dFound=Math.max(0,totalFound-(last.foundationUsed||0));
+    const dTrans=Math.max(0,totalTrans-(last.transportUsed||0));
+    const dJam=Math.max(0,totalJamWI-(last.jammaUsed||0));
+    if (newCropVal<=0 && carryDue<=0) return {farmer, applied:0, error:"Nothing new to settle and no pending balance"};
+    const netPaid=newCropVal-dAdv+dJam-dFound-dTrans-carryDue;
+    const paidNow=Math.max(0,Math.min(amountPaidNow,Math.max(0,netPaid)));
+    const entry={date:paymentDate, seedAmount:newCropVal, deltaAdvance:dAdv, deltaFoundation:dFound, deltaTransport:dTrans, deltaJamma:dJam, carryForwardDue:carryDue, netPaid,
+      payments:paidNow>0?[{date:paymentDate,amount:paidNow}]:[], runningDue:netPaid<0?Math.abs(netPaid):0, advanceUsed:totalAdvWI, foundationUsed:totalFound, transportUsed:totalTrans, jammaUsed:totalJamWI};
+    return {farmer:{...farmer, settlementHistory:[...history, entry]}, applied:paidNow};
+  };
   // Helper: detect default rate from farmers (used as placeholder)
   const getVarietyInfo = (variety) => {
     for (const f of (farmers||[])) {
@@ -2210,6 +2307,77 @@ export default function App() {
     ];
     const ws = XLSX.utils.json_to_sheet(data); ws["!cols"] = Object.keys(data[0]).map(k => ({ wch: k.includes("Name")||k.includes("Village")||k.includes("Comment")||k.includes("Note") ? 20 : 13 }));
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Template"); XLSX.writeFile(wb, "farmer_template.xlsx");
+  };
+
+  // Payments template — one row per farmer who currently has money owed to them
+  // (either a fresh billed amount not yet recorded, or an existing pending balance
+  // from an earlier partial payment). "Amount Paid Now" is left blank for you to fill in.
+  const downloadPaymentsTemplate = (candidateFarmers) => {
+    if (!candidateFarmers || candidateFarmers.length === 0) {
+      alert("No farmers with money currently owed to include in this template.");
+      return;
+    }
+    const data = candidateFarmers.map(({f, owed}) => ({
+      "Farmer No": f.farmerNo||"",
+      "Farmer Name": f.name||"",
+      "Village": f.village||"",
+      "Amount Owed (reference only)": Math.round(owed),
+      "Amount Paid Now": "",
+      "Date (optional, YYYY-MM-DD)": "",
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws["!cols"] = [{wch:12},{wch:22},{wch:16},{wch:20},{wch:16},{wch:22}];
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Payments");
+    XLSX.writeFile(wb, "pending_payments_template.xlsx");
+  };
+
+  // Bulk-apply payments from an uploaded Excel — same underlying logic as the single-farmer
+  // "Record This Payment" button, just applied in a loop. Never touches a farmer whose row
+  // is blank or has 0/invalid "Amount Paid Now".
+  const handlePaymentsUpload = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type: "binary" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+        const clean = (v) => v==null ? "" : String(v).trim();
+        const getNum = (v) => { if (v==null||v==="") return 0; if (typeof v==="number") return v; return parseFloat(String(v).replace(/[^0-9.-]/g,""))||0; };
+
+        let updatedFarmers = [...(farmers||[])];
+        let applied = 0, appliedTotal = 0, skipped = 0;
+        const problems = [];
+
+        rows.forEach((row, ri) => {
+          const farmerNo = clean(row["Farmer No"]);
+          const amount = getNum(row["Amount Paid Now"]);
+          const dateVal = clean(row["Date (optional, YYYY-MM-DD)"]);
+          if (!farmerNo) return; // blank row
+          if (amount <= 0) { skipped++; return; } // nothing entered for this farmer — skip silently
+
+          const idx = updatedFarmers.findIndex(f => clean(f.farmerNo) === farmerNo);
+          if (idx < 0) { problems.push(`Row ${ri+2}: Farmer No "${farmerNo}" not found`); return; }
+
+          const paymentDate = dateVal || new Date().toISOString().split("T")[0];
+          const result = recordFarmerPayment(updatedFarmers[idx], amount, paymentDate);
+          if (result.error) { problems.push(`Row ${ri+2} (#${farmerNo}): ${result.error}`); return; }
+          updatedFarmers[idx] = result.farmer;
+          applied++; appliedTotal += result.applied;
+        });
+
+        if (applied > 0) updateFarmers(updatedFarmers);
+
+        let msg = `Applied ${applied} payment${applied===1?"":"s"} totalling ₹${Math.round(appliedTotal).toLocaleString("en-IN")}.`;
+        if (skipped > 0) msg += `\n${skipped} row(s) skipped (blank "Amount Paid Now").`;
+        if (problems.length > 0) msg += `\n\nProblems:\n` + problems.slice(0,15).join("\n") + (problems.length>15?`\n...and ${problems.length-15} more`:"");
+        alert(msg);
+      } catch (err) {
+        alert("Could not read this file: " + err.message);
+      }
+    };
+    reader.readAsBinaryString(file);
+    e.target.value = "";
   };
 
   const exportAllData = () => {
@@ -3066,7 +3234,7 @@ export default function App() {
                 <button key={t} onClick={()=>setTab(t)} style={{ padding:"7px 16px",border:"none",borderBottom:tab===t?"3px solid #2d6a2d":"3px solid transparent",background:"transparent",fontWeight:tab===t?700:400,color:tab===t?"#1a4a1a":"#555",cursor:"pointer",fontSize:13,marginBottom:-2 }}>{l}</button>
               ))}
             </div>
-            {tab==="form"&&currentFarmer&&<FarmerForm farmer={currentFarmer} index={selectedIdx} onChange={updated=>{const copy=[...farmers];copy[selectedIdx]=updated;updateFarmers(copy);}} onRemove={()=>deleteWithUndo("farmer", selectedIdx)} varietySettings={varietySettings} getVarietyRate={getVarietyRate} getVarietyType={getVarietyType} isVarietyPaid={isVarietyPaid} getVarietyBillDate={getVarietyBillDate} farmers={farmers} subOrgs={subOrgs} pesticideList={pesticideList} />}
+            {tab==="form"&&currentFarmer&&<FarmerForm farmer={currentFarmer} index={selectedIdx} onChange={updated=>{const copy=[...farmers];copy[selectedIdx]=updated;updateFarmers(copy);}} onRemove={()=>deleteWithUndo("farmer", selectedIdx)} varietySettings={varietySettings} getVarietyRate={getVarietyRate} getVarietyType={getVarietyType} isVarietyPaid={isVarietyPaid} getVarietyBillDate={getVarietyBillDate} recordFarmerPayment={recordFarmerPayment} farmers={farmers} subOrgs={subOrgs} pesticideList={pesticideList} />}
             {tab==="preview"&&currentFarmer&&(
               <div>
                 <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
@@ -3264,6 +3432,38 @@ export default function App() {
                             ⚠️ Select companies/varieties below first — the Print buttons only include pending farmers for whatever's selected, so this stays scoped to the billing run you're actually doing right now.
                           </div>
                         )}
+                        {(()=>{
+                          // Farmers with money currently owed: existing recorded pending balances,
+                          // plus anyone in the current selection who hasn't been recorded yet.
+                          const candidateFarmers = [];
+                          const seen = new Set();
+                          (farmers||[]).forEach(f=>{
+                            const key = f.farmerNo||f.id;
+                            if (seen.has(key)) return;
+                            const preview = recordFarmerPayment(f, Number.MAX_SAFE_INTEGER, BILL_DATE);
+                            if (!preview.error && preview.applied > 0.5) {
+                              candidateFarmers.push({f, owed: preview.applied});
+                              seen.add(key);
+                            }
+                          });
+                          return (
+                            <div style={{ background:"#f0f5ff",border:"1px solid #b0c8e0",borderRadius:8,padding:"10px 12px",marginBottom:12 }}>
+                              <div style={{ fontSize:12,fontWeight:700,color:"#2d5a8a",marginBottom:6 }}>💵 Payments Made — Bulk Upload</div>
+                              <div style={{ fontSize:11,color:"#555",marginBottom:8 }}>
+                                Download a spreadsheet of every farmer currently owed money ({candidateFarmers.length} farmer{candidateFarmers.length===1?"":"s"}), fill in "Amount Paid Now" for whoever you've actually paid, then upload it back — no need to open each farmer individually.
+                              </div>
+                              <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                                <button onClick={()=>downloadPaymentsTemplate(candidateFarmers)} style={{ background:"#2d5a8a",color:"#fff",border:"none",borderRadius:6,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer" }}>
+                                  📥 Download Payments Template
+                                </button>
+                                <label style={{ background:"#2d6a2d",color:"#fff",border:"none",borderRadius:6,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer",display:"inline-block" }}>
+                                  📤 Upload Filled Template
+                                  <input type="file" accept=".xlsx,.xls,.csv" onChange={handlePaymentsUpload} style={{display:"none"}} />
+                                </label>
+                              </div>
+                            </div>
+                          );
+                        })()}
                         <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:10 }}>
                           <div style={{ background:"#e8f5e9",border:"1.5px solid #2d6a2d",borderRadius:8,padding:"10px 12px" }}>
                             <div style={{ fontSize:11,color:"#2d6a2d",fontWeight:700 }}>✔ Billing Done</div>
@@ -4702,6 +4902,20 @@ export default function App() {
         const openSubOrgsDrill=()=>openDrill("Sub-Organizer Summary","🏢","#2d5a8a",
           soStats.map((so,i)=>({label:"#"+(so.accNo||"—")+" "+(so.name||"Sub-Org"),sub:(so.village||"—")+" · "+so.growerCount+" growers ("+so.passCount+" passed)",value:(so.balance>=0?"Pay ":"Due ")+fmt(so.balance),onClick:()=>goToSubOrg(i)})),
           "No sub-organizers added yet");
+        // Farmers whose billing is complete but who haven't been fully paid in cash yet —
+        // a separate concept from billing/settlement status, tracked per-settlement via amountPaid.
+        const pendingPaymentFarmers = allF.map(f=>{
+          const pending = (f.settlementHistory||[]).reduce((s,h)=>{
+            if (h.netPaid<0) return s;
+            const paymentsLog = (h.payments&&h.payments.length>0) ? h.payments : (h.amountPaid>0 ? [{amount:h.amountPaid}] : []);
+            const totalPaid = paymentsLog.reduce((ss,p)=>ss+(parseFloat(p.amount)||0),0);
+            return s+Math.max(0,h.netPaid-totalPaid);
+          },0);
+          return {f, pending};
+        }).filter(r=>r.pending>0.5);
+        const openPendingPaymentsDrill=()=>openDrill("Pending Payments to Farmers","💵","#856404",
+          pendingPaymentFarmers.sort((a,b)=>b.pending-a.pending).map(({f,pending})=>({label:"#"+(f.farmerNo||"?")+" "+(f.name||""),sub:f.village||"—",value:fmt(pending),onClick:()=>goToFarmer(f)})),
+          "No pending payments owed to farmers");
         const openCompanyVillageDrill=(company,village,type)=>{
           const cell=vcMatrix[company]?.[village];
           const list=(type==="pay"?cell?.payFarmers:cell?.dueFarmers)||[];
@@ -4739,6 +4953,7 @@ export default function App() {
               <Card icon="✅" label="Passed Crops" value={passC+" crops"} sub={allCrops.length>0?Math.round(passC/allCrops.length*100)+"% of all crops":"—"} color="#2d6a2d" onClick={()=>openPassFailDrill("Pass")} />
               <Card icon="❌" label="Failed Crops" value={failC+" crops"} sub={allCrops.length>0?Math.round(failC/allCrops.length*100)+"% of all crops":"—"} color="#e74c3c" onClick={()=>openPassFailDrill("Fail")} />
               <Card icon="🏢" label="Sub-Organizers" value={soStats.length+" sub-orgs"} sub={soStats.reduce((s,so)=>s+so.growerCount,0)+" growers"} color="#2d5a8a" onClick={openSubOrgsDrill} />
+              <Card icon="💵" label="Pending Payments to Farmers" value={fmt(pendingPaymentFarmers.reduce((s,r)=>s+r.pending,0))} sub={pendingPaymentFarmers.length+" farmer"+(pendingPaymentFarmers.length===1?"":"s")+" — billed but not fully paid"} color="#856404" onClick={openPendingPaymentsDrill} />
             </div>
 
             {/* ── VILLAGE × COMPANY MATRIX ── */}
