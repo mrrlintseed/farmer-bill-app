@@ -570,7 +570,7 @@ function BillPreview({ farmer, varietySettings, getVarietyBillDate, isVarietyPai
                 {h.deltaFoundation>0 && <><div style={{color:"#555"}}>Foundation</div><div style={{textAlign:"right",fontWeight:600,color:"#c0392b"}}>− ₹{Math.round(h.deltaFoundation).toLocaleString("en-IN")}</div></>}
                 {h.deltaTransport>0 && <><div style={{color:"#555"}}>Transportation</div><div style={{textAlign:"right",fontWeight:600,color:"#c0392b"}}>− ₹{Math.round(h.deltaTransport).toLocaleString("en-IN")}</div></>}
                 <div style={{borderTop:"2px solid "+(wasPayable?"#2d6a2d":"#c0392b"),paddingTop:6,marginTop:4,fontWeight:700,fontSize:14,color:wasPayable?"#1a4a1a":"#c0392b"}}>
-                  {wasPayable ? "Paid to Farmer" : "Due from Farmer (Carried Forward)"}
+                  {wasPayable ? "Balance Payable to Farmer" : "Due from Farmer (Carried Forward)"}
                 </div>
                 <div style={{borderTop:"2px solid "+(wasPayable?"#2d6a2d":"#c0392b"),paddingTop:6,marginTop:4,textAlign:"right",fontWeight:800,fontSize:18,color:wasPayable?"#1a4a1a":"#c0392b"}}>
                   {wasPayable?"":"− "}₹{Math.round(Math.abs(h.netPaid)).toLocaleString("en-IN")}
@@ -581,25 +581,20 @@ function BillPreview({ farmer, varietySettings, getVarietyBillDate, isVarietyPai
                   const pending = h.netPaid - totalPaid;
                   if (paymentsLog.length===0 && pending<=0.5) return null;
                   return (
-                    <div style={{gridColumn:"1/-1", marginTop:4, background:"#f9fdf9", borderRadius:6, padding:"6px 10px"}}>
-                      {paymentsLog.length>0 && (
-                        <div style={{fontSize:11,color:"#1a6a1a",marginBottom:pending>0.5?4:0}}>
-                          <div style={{fontWeight:700,marginBottom:2}}>💵 Payments Received:</div>
-                          {paymentsLog.map((p,pi)=>(
-                            <div key={pi} style={{display:"flex",justifyContent:"space-between"}}>
-                              <span>₹{Math.round(p.amount).toLocaleString("en-IN")} on {fmtDate(p.date)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {pending>0.5 ? (
-                        <div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:700,color:"#856404"}}>
-                          <span>⏳ Pending Payment (to pay later)</span>
+                    <div style={{gridColumn:"1/-1", marginTop:6, borderTop:"1px dashed #c0c0c0", paddingTop:6}}>
+                      {pending>0.5 && (
+                        <div style={{display:"flex",justifyContent:"space-between",fontSize:13,fontWeight:700,color:"#856404",marginBottom:paymentsLog.length>0?4:0}}>
+                          <span>⏳ Pending to Farmer</span>
                           <span>₹{Math.round(pending).toLocaleString("en-IN")}</span>
                         </div>
-                      ) : (
-                        <div style={{fontSize:11,fontWeight:700,color:"#1a6a1a"}}>✔ Fully Paid</div>
                       )}
+                      {paymentsLog.map((p,pi)=>(
+                        <div key={pi} style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#1a6a1a"}}>
+                          <span>💵 Paid to Farmer ({fmtDate(p.date)})</span>
+                          <span>₹{Math.round(p.amount).toLocaleString("en-IN")}</span>
+                        </div>
+                      ))}
+                      {pending<=0.5 && paymentsLog.length>0 && <div style={{fontSize:11,fontWeight:700,color:"#1a6a1a",marginTop:2}}>✔ Fully Paid</div>}
                     </div>
                   );
                 })()}
@@ -4913,8 +4908,19 @@ export default function App() {
           },0);
           return {f, pending};
         }).filter(r=>r.pending>0.5);
+        const closePendingPayment = (f) => {
+          if (!window.confirm(`Mark the full pending payment for #${f.farmerNo||"?"} ${f.name||""} as paid today (${fmtDate(BILL_DATE)})?`)) return;
+          const today = new Date().toISOString().split("T")[0];
+          const result = recordFarmerPayment(f, Number.MAX_SAFE_INTEGER, today);
+          if (result.error) { alert(result.error); return; }
+          const idx = (farmers||[]).findIndex(x=>x===f || (x.id&&x.id===f.id));
+          if (idx<0) return;
+          const copy=[...farmers]; copy[idx]=result.farmer; updateFarmers(copy);
+          setDashboardDrill(null);
+        };
         const openPendingPaymentsDrill=()=>openDrill("Pending Payments to Farmers","💵","#856404",
-          pendingPaymentFarmers.sort((a,b)=>b.pending-a.pending).map(({f,pending})=>({label:"#"+(f.farmerNo||"?")+" "+(f.name||""),sub:f.village||"—",value:fmt(pending),onClick:()=>goToFarmer(f)})),
+          pendingPaymentFarmers.sort((a,b)=>b.pending-a.pending).map(({f,pending})=>({label:"#"+(f.farmerNo||"?")+" "+(f.name||""),sub:f.village||"—",value:fmt(pending),onClick:()=>goToFarmer(f),
+            action:{label:"✓ Close",color:"#2d6a2d",onClick:(e)=>{e.stopPropagation();closePendingPayment(f);}}})),
           "No pending payments owed to farmers");
         const openCompanyVillageDrill=(company,village,type)=>{
           const cell=vcMatrix[company]?.[village];
@@ -5050,18 +5056,24 @@ export default function App() {
                 ? dashboardDrill.groups.reduce((s,g)=>s+g.rows.length,0)
                 : dashboardDrill.rows.length;
               const RowItem = (r,i) => (
-                <div key={i} onClick={r.onClick||undefined}
-                  style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 10px",borderRadius:8,cursor:r.onClick?"pointer":"default",marginBottom:2}}
-                  onMouseEnter={e=>e.currentTarget.style.background="#f5f8f5"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                  <div style={{minWidth:0,flex:1}}>
-                    <div style={{fontSize:12.5,fontWeight:600,color:"#333",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.label}</div>
-                    {r.sub&&<div style={{fontSize:11,color:"#999",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.sub}</div>}
+                <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 10px",borderRadius:8,marginBottom:2}}>
+                  <div onClick={r.onClick||undefined} style={{display:"flex",flex:1,minWidth:0,cursor:r.onClick?"pointer":"default"}}
+                    onMouseEnter={e=>e.currentTarget.style.background="#f5f8f5"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                    <div style={{minWidth:0,flex:1}}>
+                      <div style={{fontSize:12.5,fontWeight:600,color:"#333",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.label}</div>
+                      {r.sub&&<div style={{fontSize:11,color:"#999",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.sub}</div>}
+                    </div>
+                    <div style={{textAlign:"right",marginLeft:10}}>
+                      <div style={{fontWeight:700,fontSize:12.5,color:dashboardDrill.color,whiteSpace:"nowrap"}}>{r.value}</div>
+                      {r.value2&&<div style={{fontSize:10,fontWeight:600,color:r.value2Color||"#999",whiteSpace:"nowrap"}}>{r.value2}</div>}
+                    </div>
+                    {r.onClick && <span style={{marginLeft:6,color:"#bbb",fontSize:13}}>›</span>}
                   </div>
-                  <div style={{textAlign:"right",marginLeft:10}}>
-                    <div style={{fontWeight:700,fontSize:12.5,color:dashboardDrill.color,whiteSpace:"nowrap"}}>{r.value}</div>
-                    {r.value2&&<div style={{fontSize:10,fontWeight:600,color:r.value2Color||"#999",whiteSpace:"nowrap"}}>{r.value2}</div>}
-                  </div>
-                  {r.onClick && <span style={{marginLeft:6,color:"#bbb",fontSize:13}}>›</span>}
+                  {r.action && (
+                    <button onClick={r.action.onClick} style={{marginLeft:8,flexShrink:0,background:r.action.color||"#2d6a2d",color:"#fff",border:"none",borderRadius:6,padding:"5px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                      {r.action.label}
+                    </button>
+                  )}
                 </div>
               );
               return (
