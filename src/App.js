@@ -1699,6 +1699,8 @@ export default function App() {
   const [printQueueTotal, setPrintQueueTotal] = useState(0);
   const [printQueueTelugu, setPrintQueueTelugu] = useState(false);
   const [pendingPrintGroupBy, setPendingPrintGroupBy] = useState("none");
+  const [showPendingPaymentsTable, setShowPendingPaymentsTable] = useState(false);
+  const [ppSort, setPpSort] = useState({key:"amount", dir:"desc"});
   const [printQueueOverride, setPrintQueueOverride] = useState(null); // translated farmer to render instead of the raw one
   const [previewTeluguOverride, setPreviewTeluguOverride] = useState(null); // translated farmer for single-bill preview — never written to real data
   const [subOrgTeluguOverride, setSubOrgTeluguOverride] = useState(null); // translated sub-org for bill preview — never written to real data
@@ -2307,6 +2309,29 @@ export default function App() {
   // Payments template — one row per farmer who currently has money owed to them
   // (either a fresh billed amount not yet recorded, or an existing pending balance
   // from an earlier partial payment). "Amount Paid Now" is left blank for you to fill in.
+  // Removes only the payment record(s) matching a specific date from each farmer's most
+  // recent settlement — leaves the settlement itself (crop value, deductions) untouched,
+  // so it's safe to use as a precise correction for a bulk upload that recorded the wrong
+  // amount, without losing the correct underlying settlement calculation.
+  const bulkUndoPaymentsByDate = (targetDate) => {
+    let updatedFarmers = [...(farmers||[])];
+    let affected = [];
+    updatedFarmers = updatedFarmers.map(f => {
+      const history = f.settlementHistory||[];
+      if (history.length===0) return f;
+      const last = history[history.length-1];
+      const payments = last.payments||[];
+      const filtered = payments.filter(p => p.date !== targetDate);
+      if (filtered.length === payments.length) return f; // nothing matched this date
+      affected.push(f.name||f.farmerNo);
+      const newHistory = [...history];
+      newHistory[history.length-1] = {...last, payments: filtered};
+      return {...f, settlementHistory: newHistory};
+    });
+    if (affected.length>0) updateFarmers(updatedFarmers);
+    return affected;
+  };
+
   const downloadPaymentsTemplate = (candidateFarmers) => {
     if (!candidateFarmers || candidateFarmers.length === 0) {
       alert("No farmers with money currently owed to include in this template.");
@@ -2350,7 +2375,11 @@ export default function App() {
         // Accept several common ways someone might label these columns
         const ALIASES = {
           farmerNo: ["farmer no","farmerno","farmer number","farmer #","farmer id"],
-          amount: ["amount paid now","pending amount","amount paid","amount","paid amount","payment amount"],
+          // "Amount Paid" style columns — the value IS the payment to record, as-is
+          amountPaid: ["amount paid now","amount paid","paid amount","payment amount","paid"],
+          // "Pending Amount" style columns — the value is what's STILL OWED/held back, the
+          // opposite of a payment. The actual payment to record is (total owed − this value).
+          amountPending: ["pending amount","amount pending","balance pending","still pending","pending balance","amount held","held amount"],
           date: ["date (optional, yyyy-mm-dd)","date","pending date","payment date","paid date"],
         };
         const matchesAlias = (header, list) => list.includes(clean(header).toLowerCase());
@@ -2367,18 +2396,21 @@ export default function App() {
           return;
         }
         const headers = (allRows[headerIdx]||[]).map(h => clean(h));
-        const hIdx = { farmerNo:-1, amount:-1, date:-1 };
+        const hIdx = { farmerNo:-1, amountPaid:-1, amountPending:-1, date:-1 };
         headers.forEach((h,i) => {
           const hl = h.toLowerCase();
           if (hIdx.farmerNo<0 && ALIASES.farmerNo.includes(hl)) hIdx.farmerNo=i;
-          if (hIdx.amount<0 && ALIASES.amount.includes(hl)) hIdx.amount=i;
+          if (hIdx.amountPaid<0 && ALIASES.amountPaid.includes(hl)) hIdx.amountPaid=i;
+          if (hIdx.amountPending<0 && ALIASES.amountPending.includes(hl)) hIdx.amountPending=i;
           if (hIdx.date<0 && ALIASES.date.includes(hl)) hIdx.date=i;
         });
-        if (hIdx.amount<0) {
-          alert('Found "Farmer No" but couldn\'t find an amount column (tried "Amount Paid Now", "Pending Amount", "Amount"). Please check the column header name and try again.');
+        if (hIdx.amountPaid<0 && hIdx.amountPending<0) {
+          alert('Found "Farmer No" but couldn\'t find an amount column. Use a header like "Amount Paid Now" (the amount you paid) or "Pending Amount" (the amount still held back) and try again.');
           e.target.value = "";
           return;
         }
+        // If both a "paid" and a "pending" column happen to exist, prefer the direct "paid" one.
+        const usingPendingColumn = hIdx.amountPaid<0 && hIdx.amountPending>=0;
 
         let updatedFarmers = [...(farmers||[])];
         let applied = 0, appliedTotal = 0, skipped = 0;
@@ -2387,13 +2419,25 @@ export default function App() {
         for (let ri=headerIdx+1; ri<allRows.length; ri++) {
           const row = allRows[ri]; if (!row || row.length===0) continue;
           const farmerNo = clean(row[hIdx.farmerNo]);
-          const amount = getNum(row[hIdx.amount]);
           const dateVal = hIdx.date>=0 ? toDate(row[hIdx.date]) : "";
           if (!farmerNo) continue; // blank row
-          if (amount <= 0) { skipped++; continue; } // nothing entered for this farmer — skip silently
 
           const idx = updatedFarmers.findIndex(f => clean(f.farmerNo) === farmerNo);
           if (idx < 0) { problems.push(`Row ${ri+1}: Farmer No "${farmerNo}" not found`); continue; }
+
+          let amount;
+          if (usingPendingColumn) {
+            const pendingVal = getNum(row[hIdx.amountPending]);
+            if (pendingVal <= 0) { skipped++; continue; }
+            const preview = recordFarmerPayment(updatedFarmers[idx], Number.MAX_SAFE_INTEGER, dateVal||new Date().toISOString().split("T")[0]);
+            if (preview.error) { problems.push(`Row ${ri+1} (#${farmerNo}): ${preview.error}`); continue; }
+            const totalOwed = preview.applied;
+            amount = Math.max(0, totalOwed - pendingVal);
+            if (amount <= 0) { skipped++; continue; }
+          } else {
+            amount = getNum(row[hIdx.amountPaid]);
+            if (amount <= 0) { skipped++; continue; }
+          }
 
           const paymentDate = dateVal || new Date().toISOString().split("T")[0];
           const result = recordFarmerPayment(updatedFarmers[idx], amount, paymentDate);
@@ -2404,7 +2448,8 @@ export default function App() {
 
         if (applied > 0) updateFarmers(updatedFarmers);
 
-        let msg = `Applied ${applied} payment${applied===1?"":"s"} totalling ₹${Math.round(appliedTotal).toLocaleString("en-IN")}.`;
+        let msg = (usingPendingColumn ? `Read "${headers[hIdx.amountPending]}" as the amount still pending — payment applied was (total owed − pending).\n\n` : "")
+          + `Applied ${applied} payment${applied===1?"":"s"} totalling ₹${Math.round(appliedTotal).toLocaleString("en-IN")}.`;
         if (skipped > 0) msg += `\n${skipped} row(s) skipped (blank amount).`;
         if (problems.length > 0) msg += `\n\nProblems:\n` + problems.slice(0,15).join("\n") + (problems.length>15?`\n...and ${problems.length-15} more`:"");
         alert(msg);
@@ -3496,6 +3541,15 @@ export default function App() {
                                   📤 Upload Filled Template
                                   <input type="file" accept=".xlsx,.xls,.csv" onChange={handlePaymentsUpload} style={{display:"none"}} />
                                 </label>
+                                <button onClick={()=>{
+                                  const dateInput = window.prompt('Correct a mistaken upload: enter the payment date (YYYY-MM-DD) to remove.\n\nThis only removes the payment record dated exactly this day from each farmer\'s most recent settlement — their correct crop value and deductions stay untouched, so you can safely re-upload the right amount afterward.\n\nExample: 2026-08-24', '');
+                                  if (!dateInput) return;
+                                  const affected = bulkUndoPaymentsByDate(dateInput.trim());
+                                  if (affected.length===0) { alert('No payment records dated '+dateInput+' were found.'); return; }
+                                  alert(`Removed the ${dateInput} payment from ${affected.length} farmer(s):\n\n`+affected.slice(0,20).join(', ')+(affected.length>20?`, and ${affected.length-20} more`:''));
+                                }} style={{ background:"#fff",color:"#c0392b",border:"1px solid #e07a6f",borderRadius:6,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer" }}>
+                                  🗑️ Undo Payments By Date
+                                </button>
                               </div>
                             </div>
                           );
@@ -5000,7 +5054,7 @@ export default function App() {
               <Card icon="✅" label="Passed Crops" value={passC+" crops"} sub={allCrops.length>0?Math.round(passC/allCrops.length*100)+"% of all crops":"—"} color="#2d6a2d" onClick={()=>openPassFailDrill("Pass")} />
               <Card icon="❌" label="Failed Crops" value={failC+" crops"} sub={allCrops.length>0?Math.round(failC/allCrops.length*100)+"% of all crops":"—"} color="#e74c3c" onClick={()=>openPassFailDrill("Fail")} />
               <Card icon="🏢" label="Sub-Organizers" value={soStats.length+" sub-orgs"} sub={soStats.reduce((s,so)=>s+so.growerCount,0)+" growers"} color="#2d5a8a" onClick={openSubOrgsDrill} />
-              <Card icon="💵" label="Pending Payments to Farmers" value={fmt(pendingPaymentFarmers.reduce((s,r)=>s+r.pending,0))} sub={pendingPaymentFarmers.length+" farmer"+(pendingPaymentFarmers.length===1?"":"s")+" — billed but not fully paid"} color="#856404" onClick={openPendingPaymentsDrill} />
+              <Card icon="💵" label="Pending Payments to Farmers" value={fmt(pendingPaymentFarmers.reduce((s,r)=>s+r.pending,0))} sub={pendingPaymentFarmers.length+" farmer"+(pendingPaymentFarmers.length===1?"":"s")+" — billed but not fully paid"} color="#856404" onClick={()=>setShowPendingPaymentsTable(true)} />
             </div>
 
             {/* ── VILLAGE × COMPANY MATRIX ── */}
@@ -5090,6 +5144,89 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            {/* ── PENDING PAYMENTS TABLE ── */}
+            {showPendingPaymentsTable && (() => {
+              const rows = pendingPaymentFarmers.map(({f,pending}) => {
+                const h = (f.settlementHistory||[])[(f.settlementHistory||[]).length-1];
+                return { f, pending, date: h ? h.date : "" };
+              });
+              const sorted = [...rows].sort((a,b) => {
+                const dir = ppSort.dir==="asc" ? 1 : -1;
+                if (ppSort.key==="farmerNo") {
+                  const na=parseInt((a.f.farmerNo||"").replace(/\D/g,""))||0, nb=parseInt((b.f.farmerNo||"").replace(/\D/g,""))||0;
+                  return (na-nb || (a.f.farmerNo||"").localeCompare(b.f.farmerNo||"")) * dir;
+                }
+                if (ppSort.key==="name") return (a.f.name||"").localeCompare(b.f.name||"") * dir;
+                if (ppSort.key==="father") return (a.f.fatherName||"").localeCompare(b.f.fatherName||"") * dir;
+                if (ppSort.key==="village") return (a.f.village||"").localeCompare(b.f.village||"") * dir;
+                if (ppSort.key==="date") return (a.date||"").localeCompare(b.date||"") * dir;
+                return (a.pending-b.pending) * dir; // amount
+              });
+              const totalPending = rows.reduce((s,r)=>s+r.pending,0);
+              const setSort = (key) => setPpSort(prev => prev.key===key ? {key,dir:prev.dir==="asc"?"desc":"asc"} : {key,dir:key==="amount"?"desc":"asc"});
+              const Th = ({label,sortKey}) => (
+                <th onClick={()=>setSort(sortKey)} style={{padding:"8px 10px",textAlign:"left",cursor:"pointer",userSelect:"none",whiteSpace:"nowrap"}}>
+                  {label} {ppSort.key===sortKey ? (ppSort.dir==="asc"?"▲":"▼") : ""}
+                </th>
+              );
+              return (
+                <div onClick={()=>setShowPendingPaymentsTable(false)} style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.35)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+                  <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,width:"min(900px, 96vw)",maxHeight:"88vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,0.25)"}}>
+                    <div style={{padding:"14px 18px",borderBottom:"1px solid #eee",display:"flex",alignItems:"center",justifyContent:"space-between",background:"#85640412"}}>
+                      <div>
+                        <div style={{fontWeight:800,fontSize:15,color:"#856404"}}>💵 Pending Payments to Farmers</div>
+                        <div style={{fontSize:11,color:"#888"}}>{rows.length} farmer{rows.length===1?"":"s"} · Total ₹{Math.round(totalPending).toLocaleString("en-IN")} · Click a column header to sort</div>
+                      </div>
+                      <button onClick={()=>setShowPendingPaymentsTable(false)} style={{background:"none",border:"none",fontSize:20,color:"#888",cursor:"pointer"}}>✕</button>
+                    </div>
+                    <div style={{overflow:"auto",flex:1}}>
+                      <table style={{width:"100%",borderCollapse:"collapse",fontSize:12.5}}>
+                        <thead style={{position:"sticky",top:0,background:"#1a2a4a",color:"#fff",zIndex:1}}>
+                          <tr>
+                            <Th label="S.No" sortKey="farmerNo" />
+                            <Th label="Farmer No" sortKey="farmerNo" />
+                            <Th label="Farmer Name" sortKey="name" />
+                            <Th label="Father Name" sortKey="father" />
+                            <Th label="Village" sortKey="village" />
+                            <Th label="Pending Amount" sortKey="amount" />
+                            <Th label="Pending Date" sortKey="date" />
+                            <th style={{padding:"8px 10px"}}></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sorted.length===0 ? (
+                            <tr><td colSpan={8} style={{padding:20,textAlign:"center",color:"#999"}}>No pending payments owed to farmers</td></tr>
+                          ) : sorted.map(({f,pending,date},i) => (
+                            <tr key={i} style={{background:i%2===0?"#fff":"#f9fbfd",borderBottom:"1px solid #eee"}}>
+                              <td style={{padding:"7px 10px",color:"#999"}}>{i+1}</td>
+                              <td style={{padding:"7px 10px",fontWeight:600}}>{f.farmerNo||"—"}</td>
+                              <td onClick={()=>{setShowPendingPaymentsTable(false);goToFarmer(f);}} style={{padding:"7px 10px",cursor:"pointer",color:"#2d5a8a",textDecoration:"underline"}}>{f.name||"—"}</td>
+                              <td style={{padding:"7px 10px"}}>{f.fatherName||"—"}</td>
+                              <td style={{padding:"7px 10px"}}>{f.village||"—"}</td>
+                              <td style={{padding:"7px 10px",fontWeight:700,color:"#856404"}}>₹{Math.round(pending).toLocaleString("en-IN")}</td>
+                              <td style={{padding:"7px 10px",color:"#666"}}>{date?fmtDate(date):"—"}</td>
+                              <td style={{padding:"7px 10px"}}>
+                                <button onClick={(e)=>{e.stopPropagation();closePendingPayment(f);setShowPendingPaymentsTable(false);}} style={{background:"#2d6a2d",color:"#fff",border:"none",borderRadius:6,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>✓ Close</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        {sorted.length>0 && (
+                          <tfoot>
+                            <tr style={{background:"#fff9e8",borderTop:"2px solid #856404",fontWeight:800}}>
+                              <td colSpan={5} style={{padding:"9px 10px",textAlign:"right"}}>TOTAL — {rows.length} farmer{rows.length===1?"":"s"}</td>
+                              <td style={{padding:"9px 10px",color:"#856404"}}>₹{Math.round(totalPending).toLocaleString("en-IN")}</td>
+                              <td colSpan={2}></td>
+                            </tr>
+                          </tfoot>
+                        )}
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* ── DRILL-DOWN DRAWER ── */}
             {dashboardDrill && (() => {
