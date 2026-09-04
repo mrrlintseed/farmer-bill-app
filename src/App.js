@@ -2334,6 +2334,18 @@ export default function App() {
     return affected;
   };
 
+  // Full reset of the payment-tracking feature — clears settlementHistory on every farmer
+  // (so no one shows a recorded settlement or pending payment anymore), leaving every other
+  // field — crops, advances, foundation, transport, billingDone, partiallyBilled — untouched.
+  const resetAllPaymentTracking = () => {
+    const affectedCount = (farmers||[]).filter(f => (f.settlementHistory||[]).length > 0).length;
+    if (affectedCount === 0) { alert("No farmers currently have any payment-tracking data recorded."); return; }
+    if (!window.confirm(`This will clear all recorded settlements/payments for ${affectedCount} farmer(s) — everyone goes back to showing no payment history.\n\nNothing else is touched: crops, advances, foundation, transport, and "Billed"/"Partially Billed" checkboxes all stay exactly as they are.\n\nThis cannot be undone. Continue?`)) return;
+    const updatedFarmers = (farmers||[]).map(f => (f.settlementHistory||[]).length>0 ? {...f, settlementHistory: []} : f);
+    updateFarmers(updatedFarmers);
+    alert(`Cleared payment-tracking data for ${affectedCount} farmer(s). Everything else about their records is unchanged.`);
+  };
+
   const downloadPaymentsTemplate = (candidateFarmers) => {
     if (!candidateFarmers || candidateFarmers.length === 0) {
       alert("No farmers with money currently owed to include in this template.");
@@ -3551,6 +3563,12 @@ export default function App() {
                                   alert(`Removed the ${dateInput} payment from ${affected.length} farmer(s):\n\n`+affected.slice(0,20).join(', ')+(affected.length>20?`, and ${affected.length-20} more`:''));
                                 }} style={{ background:"#fff",color:"#c0392b",border:"1px solid #e07a6f",borderRadius:6,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer" }}>
                                   🗑️ Undo Payments By Date
+                                </button>
+                              </div>
+                              <div style={{marginTop:10,paddingTop:10,borderTop:"1px dashed #b0c8e0"}}>
+                                <div style={{fontSize:10,color:"#888",marginBottom:6}}>Feature getting confusing and want a clean slate? This clears every recorded settlement/payment for everyone — crops, advances, and billing checkboxes are untouched.</div>
+                                <button onClick={resetAllPaymentTracking} style={{ background:"#fff",color:"#a12d22",border:"1.5px solid #a12d22",borderRadius:6,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer" }}>
+                                  🔄 Reset All Payment Tracking (start fresh)
                                 </button>
                               </div>
                             </div>
