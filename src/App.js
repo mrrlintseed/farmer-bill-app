@@ -577,6 +577,7 @@ function BillPreview({ farmer, varietySettings, getVarietyBillDate, isVarietyPai
                 </div>
                 {wasPayable && (()=>{
                   const paymentsLog = (h.payments&&h.payments.length>0) ? h.payments : (h.amountPaid>0 ? [{date:h.date, amount:h.amountPaid}] : []);
+                  if (h.isMigrated && paymentsLog.length===0) return null; // never actually touched — show plain total only
                   const totalPaid = paymentsLog.reduce((s,p)=>s+(parseFloat(p.amount)||0),0);
                   const pending = h.netPaid - totalPaid;
                   if (paymentsLog.length===0 && pending<=0.5) return null;
@@ -5018,6 +5019,7 @@ export default function App() {
           const pending = (f.settlementHistory||[]).reduce((s,h)=>{
             if (h.netPaid<0) return s;
             const paymentsLog = (h.payments&&h.payments.length>0) ? h.payments : (h.amountPaid>0 ? [{amount:h.amountPaid}] : []);
+            if (h.isMigrated && paymentsLog.length===0) return s; // never actually touched
             const totalPaid = paymentsLog.reduce((ss,p)=>ss+(parseFloat(p.amount)||0),0);
             return s+Math.max(0,h.netPaid-totalPaid);
           },0);
