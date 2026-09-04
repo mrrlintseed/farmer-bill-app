@@ -2334,37 +2334,78 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
-        const wb = XLSX.read(ev.target.result, { type: "binary" });
+        const wb = XLSX.read(ev.target.result, { type: "binary", cellDates: true });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
-        const clean = (v) => v==null ? "" : String(v).trim();
+        const allRows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
+
+        // Strip quotes/whitespace AND a trailing colon — "Farmer No:" and "Farmer No" should match
+        const clean = (v) => { if (v==null) return ""; return String(v).replace(/^['"]+|['"]+$/g,"").trim().replace(/:$/,""); };
         const getNum = (v) => { if (v==null||v==="") return 0; if (typeof v==="number") return v; return parseFloat(String(v).replace(/[^0-9.-]/g,""))||0; };
+        const toDate = (v) => {
+          if (!v) return "";
+          if (v instanceof Date) { const y=v.getFullYear(),m=String(v.getMonth()+1).padStart(2,"0"),d=String(v.getDate()).padStart(2,"0"); return y+"-"+m+"-"+d; }
+          const s=clean(v); if (s.match(/^\d{4}-\d{2}-\d{2}/)) return s.substring(0,10); return s;
+        };
+
+        // Accept several common ways someone might label these columns
+        const ALIASES = {
+          farmerNo: ["farmer no","farmerno","farmer number","farmer #","farmer id"],
+          amount: ["amount paid now","pending amount","amount paid","amount","paid amount","payment amount"],
+          date: ["date (optional, yyyy-mm-dd)","date","pending date","payment date","paid date"],
+        };
+        const matchesAlias = (header, list) => list.includes(clean(header).toLowerCase());
+
+        // Auto-detect the header row — skip any blank rows above it, search the first 10 rows
+        let headerIdx = -1;
+        for (let i=0; i<Math.min(10,allRows.length); i++) {
+          const row = allRows[i];
+          if (row && row.some(c => matchesAlias(c, ALIASES.farmerNo))) { headerIdx = i; break; }
+        }
+        if (headerIdx === -1) {
+          alert('Could not find a "Farmer No" column in the first 10 rows of this file. Please check the column header name and try again.');
+          e.target.value = "";
+          return;
+        }
+        const headers = (allRows[headerIdx]||[]).map(h => clean(h));
+        const hIdx = { farmerNo:-1, amount:-1, date:-1 };
+        headers.forEach((h,i) => {
+          const hl = h.toLowerCase();
+          if (hIdx.farmerNo<0 && ALIASES.farmerNo.includes(hl)) hIdx.farmerNo=i;
+          if (hIdx.amount<0 && ALIASES.amount.includes(hl)) hIdx.amount=i;
+          if (hIdx.date<0 && ALIASES.date.includes(hl)) hIdx.date=i;
+        });
+        if (hIdx.amount<0) {
+          alert('Found "Farmer No" but couldn\'t find an amount column (tried "Amount Paid Now", "Pending Amount", "Amount"). Please check the column header name and try again.');
+          e.target.value = "";
+          return;
+        }
 
         let updatedFarmers = [...(farmers||[])];
         let applied = 0, appliedTotal = 0, skipped = 0;
         const problems = [];
 
-        rows.forEach((row, ri) => {
-          const farmerNo = clean(row["Farmer No"]);
-          const amount = getNum(row["Amount Paid Now"]);
-          const dateVal = clean(row["Date (optional, YYYY-MM-DD)"]);
-          if (!farmerNo) return; // blank row
-          if (amount <= 0) { skipped++; return; } // nothing entered for this farmer — skip silently
+        for (let ri=headerIdx+1; ri<allRows.length; ri++) {
+          const row = allRows[ri]; if (!row || row.length===0) continue;
+          const farmerNo = clean(row[hIdx.farmerNo]);
+          const amount = getNum(row[hIdx.amount]);
+          const dateVal = hIdx.date>=0 ? toDate(row[hIdx.date]) : "";
+          if (!farmerNo) continue; // blank row
+          if (amount <= 0) { skipped++; continue; } // nothing entered for this farmer — skip silently
 
           const idx = updatedFarmers.findIndex(f => clean(f.farmerNo) === farmerNo);
-          if (idx < 0) { problems.push(`Row ${ri+2}: Farmer No "${farmerNo}" not found`); return; }
+          if (idx < 0) { problems.push(`Row ${ri+1}: Farmer No "${farmerNo}" not found`); continue; }
 
           const paymentDate = dateVal || new Date().toISOString().split("T")[0];
           const result = recordFarmerPayment(updatedFarmers[idx], amount, paymentDate);
-          if (result.error) { problems.push(`Row ${ri+2} (#${farmerNo}): ${result.error}`); return; }
+          if (result.error) { problems.push(`Row ${ri+1} (#${farmerNo}): ${result.error}`); continue; }
           updatedFarmers[idx] = result.farmer;
           applied++; appliedTotal += result.applied;
-        });
+        }
 
         if (applied > 0) updateFarmers(updatedFarmers);
 
         let msg = `Applied ${applied} payment${applied===1?"":"s"} totalling ₹${Math.round(appliedTotal).toLocaleString("en-IN")}.`;
-        if (skipped > 0) msg += `\n${skipped} row(s) skipped (blank "Amount Paid Now").`;
+        if (skipped > 0) msg += `\n${skipped} row(s) skipped (blank amount).`;
         if (problems.length > 0) msg += `\n\nProblems:\n` + problems.slice(0,15).join("\n") + (problems.length>15?`\n...and ${problems.length-15} more`:"");
         alert(msg);
       } catch (err) {
