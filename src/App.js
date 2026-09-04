@@ -2010,7 +2010,9 @@ export default function App() {
 
     // History exists — apply to an existing pending balance first, if any
     const last=history[history.length-1];
-    const lastPaid=(last.payments||[]).reduce((s,p)=>s+(parseFloat(p.amount)||0),0) || (last.amountPaid??(last.netPaid>=0?last.netPaid:0));
+    const lastPaid = (last.payments && last.payments.length>0)
+      ? last.payments.reduce((s,p)=>s+(parseFloat(p.amount)||0),0)
+      : (last.amountPaid ?? 0);
     const lastPending=last.netPaid>=0?Math.max(0,last.netPaid-lastPaid):0;
     if (lastPending>0.5) {
       const paidNow=Math.max(0,Math.min(amountPaidNow,lastPending));
