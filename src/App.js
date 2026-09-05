@@ -1269,6 +1269,31 @@ function FarmerForm({ farmer, index, onChange, onRemove, varietySettings, getVar
               </>
             );
           })()}
+          {(farmer.settlementHistory||[]).length===0 && (farmer.crops||[]).length>1 && farmer.partiallyBilled && (
+            <button onClick={()=>{
+              const crops = farmer.crops||[];
+              const list = crops.map((c,i)=>`${i+1}. ${c.variety||"(no variety)"} — ${c.quantity||0} pkts (${c.result||"?"})`).join("\n");
+              const input = window.prompt(`Which crop number(s) were part of the EARLIER settlement (already billed/paid before)? Enter the numbers separated by commas — leave out whichever variety is the NEW one you're paying now.\n\n${list}`, "");
+              if (input===null) return;
+              const indices = input.split(",").map(s=>parseInt(s.trim())-1).filter(i=>!isNaN(i)&&i>=0&&i<crops.length);
+              if (indices.length===0) { alert("No valid crop numbers entered."); return; }
+              const selectedVarieties = crops.filter((c,i)=>indices.includes(i)).map(c=>c.variety);
+              const alreadyVal = crops.filter(c=>selectedVarieties.includes(c.variety)).reduce((s,c)=>{
+                const qty=parseFloat(c.quantity)||0;
+                const vRate=(c.rateOverride===true)?(parseFloat(c.ratePerUnit)||0):(getVarietyRate(c.variety)||(parseFloat(c.ratePerUnit)||0));
+                const isPaidPass=c.result==="Pass"&&isVarietyPaid(c.variety);
+                return s+(isPaidPass?qty*vRate:0);
+              },0);
+              if (alreadyVal<=0) { alert("The selected crop(s) have no paid value — check your selection and try again."); return; }
+              const today = new Date().toISOString().split("T")[0];
+              const result = recordFarmerPayment(farmer, Number.MAX_SAFE_INTEGER, today, alreadyVal);
+              if (result.error) { alert(result.error); return; }
+              onChange(result.farmer);
+              alert(`Settlement 1 locked in at ₹${Math.round(alreadyVal).toLocaleString("en-IN")} for: ${selectedVarieties.join(", ")}.\n\nThe remaining crop(s) should now show correctly as Settlement 2 — check the Preview tab.`);
+            }} style={{ background:"#fff", color:"#2d5a8a", border:"1px solid #2d5a8a", borderRadius:6, padding:"5px 12px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+              🔧 Split Already-Settled Crops
+            </button>
+          )}
           <button onClick={onRemove} style={{ background: "#e74c3c", color: "#fff", border: "none", borderRadius: 4, padding: "3px 10px", cursor: "pointer", fontSize: 12 }}>Remove</button>
         </div>
       </div>
@@ -1969,7 +1994,7 @@ export default function App() {
   // crop value. Payments are stored as a dated log (not a single running total) so the
   // history stays clear even long after the fact. Returns the updated farmer object —
   // does not call onChange/updateFarmers itself, so callers control when to save.
-  const recordFarmerPayment = (farmer, amountPaidNow, paymentDate) => {
+  const recordFarmerPayment = (farmer, amountPaidNow, paymentDate, manualSeedAmount) => {
     const cropsC = (farmer.crops||[]).map(c=>{
       const area=parseFloat(c.area)||0, qty=parseFloat(c.quantity)||0;
       const vRate=(c.rateOverride===true)?(parseFloat(c.ratePerUnit)||0):(getVarietyRate(c.variety)||(parseFloat(c.ratePerUnit)||0));
@@ -1998,14 +2023,18 @@ export default function App() {
     },0);
     const history=farmer.settlementHistory||[];
 
-    // No history yet — freeze current state as Settlement 1 (matches migration display)
+    // No history yet — freeze current state as Settlement 1 (matches migration display).
+    // manualSeedAmount (used by the recovery tool) locks Settlement 1 at a specific past
+    // value instead of the farmer's full current crop value, so a later, genuinely new
+    // variety can still show up correctly as Settlement 2.
     if (history.length===0) {
-      if (totalCropVal<=0) return {farmer, applied:0, error:"No paid crop value to settle yet"};
-      const netPaidM=totalCropVal-totalAdvWI+totalJamWI-totalFound-totalTrans;
+      const seedAmt = manualSeedAmount!=null ? manualSeedAmount : totalCropVal;
+      if (seedAmt<=0) return {farmer, applied:0, error:"No paid crop value to settle yet"};
+      const netPaidM=seedAmt-totalAdvWI+totalJamWI-totalFound-totalTrans;
       const paidNow=Math.max(0,Math.min(amountPaidNow,Math.max(0,netPaidM)));
-      const entry={date:farmer.billingDoneDate||paymentDate, seedAmount:totalCropVal, deltaAdvance:totalAdvWI, deltaFoundation:totalFound, deltaTransport:totalTrans, deltaJamma:totalJamWI, carryForwardDue:0,
-        netPaid:netPaidM, payments:paidNow>0?[{date:paymentDate,amount:paidNow}]:[], runningDue:Math.max(0,totalAdvWI+totalFound+totalTrans-totalJamWI-totalCropVal),
-        advanceUsed:totalAdvWI, foundationUsed:totalFound, transportUsed:totalTrans, jammaUsed:totalJamWI, isMigrated:!!farmer.billingDone};
+      const entry={date:farmer.billingDoneDate||paymentDate, seedAmount:seedAmt, deltaAdvance:totalAdvWI, deltaFoundation:totalFound, deltaTransport:totalTrans, deltaJamma:totalJamWI, carryForwardDue:0,
+        netPaid:netPaidM, payments:paidNow>0?[{date:paymentDate,amount:paidNow}]:[], runningDue:Math.max(0,totalAdvWI+totalFound+totalTrans-totalJamWI-seedAmt),
+        advanceUsed:totalAdvWI, foundationUsed:totalFound, transportUsed:totalTrans, jammaUsed:totalJamWI, isMigrated:manualSeedAmount!=null?false:!!farmer.billingDone};
       return {farmer:{...farmer, settlementHistory:[entry]}, applied:paidNow};
     }
 
