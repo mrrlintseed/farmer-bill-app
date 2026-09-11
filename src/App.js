@@ -3794,45 +3794,85 @@ export default function App() {
                   return s+(parseFloat(j.amount)||0)+interest;
                 },0);
                 const balance = totalCropVal - totalAdvWI + totalJammaWI - totalFound - totalTrans;
-                return { so, totalAdvWI, totalQty, totalCropVal, balance };
+
+                // Payable to Sub-Org (This Bill) — same settlement-checkpoint/delta logic as the
+                // actual printed bill, so this matches exactly what that sub-org's bill would show.
+                const soOwnVarieties = [...new Set((so.growers||[]).map(g=>g.variety).filter(Boolean))];
+                const settledVars = so._settledVars || [];
+                const toPayGrowers = passGrowers.filter(g=>isSubOrgVarietyPaid(g.variety) && !settledVars.includes(g.variety));
+                const totalToPayAmt = toPayGrowers.reduce((s,g)=>{
+                  const rate = getSubOrgVarietyRate(g.variety)||parseFloat(g.rate)||0;
+                  return s+(parseFloat(g.packets)||0)*rate;
+                },0);
+                const cpAdvBillDate = (() => {
+                  const dates = soOwnVarieties.filter(v=>isSubOrgVarietyPaid(v)).map(v=>getSubOrgVarietyBillDate(v)).filter(Boolean);
+                  return dates.length>0 ? dates.reduce((a,b)=>a<b?a:b) : BILL_DATE;
+                })();
+                const cpAdvWithInt = (so.advances||[]).reduce((s,a)=>{
+                  const advBillDate = a.tillDate || cpAdvBillDate;
+                  const {interest} = (a.compound?calcCompoundInterest:calcInterest)(parseFloat(a.amount)||0, parseFloat(a.interestRate)||0, a.date, advBillDate);
+                  return s + (parseFloat(a.amount)||0) + interest;
+                },0);
+                const cpFoundation = totalFound;
+                const cpTransport = (so.growers||[]).reduce((s,g)=>s+(parseFloat(g.packets)||0),0);
+                const cpJammaWithInt = (so.jammaEntries||[]).reduce((s,j)=>{
+                  const amt=parseFloat(j.amount)||0;
+                  const jBillDate = j.tillDate || cpAdvBillDate;
+                  const {interest}=calcInterest(amt, parseFloat(j.interestRate)||0, j.date||BILL_DATE, jBillDate);
+                  return s+amt+interest;
+                },0);
+                const history = so.settlementHistory||[];
+                const lastEntry = history.length>0 ? history[history.length-1] : null;
+                const checkpoint = lastEntry || {advanceUsed:0,foundationUsed:0,transportUsed:0,jammaUsed:0};
+                const carryForwardDue = lastEntry && lastEntry.runningDue>0 ? lastEntry.runningDue : 0;
+                const deltaAdv = Math.max(0,cpAdvWithInt-checkpoint.advanceUsed);
+                const deltaFound = Math.max(0,cpFoundation-checkpoint.foundationUsed);
+                const deltaTrans = Math.max(0,cpTransport-checkpoint.transportUsed);
+                const deltaJam = Math.max(0,cpJammaWithInt-checkpoint.jammaUsed);
+                const payableThisBill = totalToPayAmt - deltaAdv + deltaJam - deltaFound - deltaTrans - carryForwardDue;
+
+                return { so, totalAdvWI, totalQty, totalCropVal, balance, payableThisBill };
               });
               const grandAdv = soSummary.reduce((s,x)=>s+x.totalAdvWI,0);
               const grandQty = soSummary.reduce((s,x)=>s+x.totalQty,0);
               const grandCrop = soSummary.reduce((s,x)=>s+x.totalCropVal,0);
               const grandPay = soSummary.filter(x=>x.balance>=0).reduce((s,x)=>s+x.balance,0);
               const grandDue = soSummary.filter(x=>x.balance<0).reduce((s,x)=>s+Math.abs(x.balance),0);
+              const grandPayableThisBill = soSummary.reduce((s,x)=>s+x.payableThisBill,0);
               return (
                 <div>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
                     <div style={{fontWeight:800,fontSize:18,color:"#1a2a4a"}}>📊 Sub-Org Summary</div>
                     <button onClick={()=>{
                       const rows = soSummary.map((x,i)=>{
-                        const {so,totalAdvWI,totalQty,totalCropVal,balance}=x;
-                        return "<tr style=\"background:${i%2===0?\"#f5f8ff\":\"#fff\"}\">"
-  +"\n                          <td style=\"padding:6px 10px;border:1px solid #ddd;\">${so.accNo||\"—\"}</td>"
-  +"\n                          <td style=\"padding:6px 10px;border:1px solid #ddd;font-weight:600;\">${so.name||\"—\"}</td>"
-  +"\n                          <td style=\"padding:6px 10px;border:1px solid #ddd;\">${so.village||\"—\"}</td>"
-  +"\n                          <td style=\"padding:6px 10px;border:1px solid #ddd;text-align:right;\">${(so.growers||[]).length}</td>"
-  +"\n                          <td style=\"padding:6px 10px;border:1px solid #ddd;text-align:right;\">${totalQty.toLocaleString(\"en-IN\")}</td>"
-  +"\n                          <td style=\"padding:6px 10px;border:1px solid #ddd;text-align:right;\">₹${Math.round(totalCropVal).toLocaleString(\"en-IN\")}</td>"
-  +"\n                          <td style=\"padding:6px 10px;border:1px solid #ddd;text-align:right;color:#c0392b;\">₹${Math.round(totalAdvWI).toLocaleString(\"en-IN\")}</td>"
-  +"\n                          <td style=\"padding:6px 10px;border:1px solid #ddd;text-align:right;font-weight:700;color:${balance>=0?\"#1a5c1a\":\"#c0392b\"};\">₹${Math.abs(Math.round(balance)).toLocaleString(\"en-IN\")} ${balance>=0?\"(Pay)\":\"(Due)\"}</td>"
-  +"\n                        </tr>";
+                        const {so,totalAdvWI,totalQty,totalCropVal,balance,payableThisBill}=x;
+                        return `<tr style="background:${i%2===0?"#f5f8ff":"#fff"}">
+                          <td style="padding:6px 10px;border:1px solid #ddd;">${so.accNo||"—"}</td>
+                          <td style="padding:6px 10px;border:1px solid #ddd;font-weight:600;">${so.name||"—"}</td>
+                          <td style="padding:6px 10px;border:1px solid #ddd;">${so.village||"—"}</td>
+                          <td style="padding:6px 10px;border:1px solid #ddd;text-align:right;">${(so.growers||[]).length}</td>
+                          <td style="padding:6px 10px;border:1px solid #ddd;text-align:right;">${totalQty.toLocaleString("en-IN")}</td>
+                          <td style="padding:6px 10px;border:1px solid #ddd;text-align:right;">₹${Math.round(totalCropVal).toLocaleString("en-IN")}</td>
+                          <td style="padding:6px 10px;border:1px solid #ddd;text-align:right;color:#c0392b;">₹${Math.round(totalAdvWI).toLocaleString("en-IN")}</td>
+                          <td style="padding:6px 10px;border:1px solid #ddd;text-align:right;font-weight:700;color:${balance>=0?"#1a5c1a":"#c0392b"};">₹${Math.abs(Math.round(balance)).toLocaleString("en-IN")} ${balance>=0?"(Pay)":"(Due)"}</td>
+                          <td style="padding:6px 10px;border:1px solid #ddd;text-align:right;font-weight:800;color:${payableThisBill>=0?"#2d5a8a":"#c0392b"};background:#f0f5ff;">${payableThisBill>=0?"":"− "}₹${Math.abs(Math.round(payableThisBill)).toLocaleString("en-IN")}</td>
+                        </tr>`;
                       }).join("");
-                      const html="<!DOCTYPE html><html><head><meta charset=\"UTF-8\"/><title>Sub-Org Summary</title>"
-  +"\n                        <style>body{font-family:Georgia,serif;padding:20px;}h2{color:#1a2a4a;}table{border-collapse:collapse;width:100%;font-size:12px;}th{background:#1a2a4a;color:#fff;padding:7px 10px;border:1px solid #ddd;}.total-row td{font-weight:800;background:#e8f0ff;border-top:2px solid #1a2a4a;}@media print{@page{margin:8mm;size:A4 landscape;}}</style>"
-  +"\n                        </head><body><h2>📊 Sub-Org Summary</h2>"
-  +"\n                        <div style=\"font-size:13px;color:#555;margin-bottom:10px;\">Bill Date: ${fmtDate(BILL_DATE)} | Total Sub-Orgs: ${subOrgs.length}</div>"
-  +"\n                        <table><thead><tr><th>Acc No</th><th>Sub-Org Name</th><th>Village</th><th>Growers</th><th>Qty</th><th>Crop Value</th><th>Adv+Int</th><th>Bal to Pay</th><th>Bal Due</th></tr></thead>"
-  +"\n                        <tbody>${rows}"
-  +"\n                        <tr class=\"total-row\"><td colspan=\"3\">GRAND TOTAL</td>"
-  +"\n                          <td style=\"text-align:right;padding:6px 10px;border:1px solid #ddd;\">${subOrgs.reduce((s,so)=>s+(so.growers||[]).length,0)}</td>"
-  +"\n                          <td style=\"text-align:right;padding:6px 10px;border:1px solid #ddd;\">${grandQty.toLocaleString(\"en-IN\")}</td>"
-  +"\n                          <td style=\"text-align:right;padding:6px 10px;border:1px solid #ddd;\">₹${Math.round(grandCrop).toLocaleString(\"en-IN\")}</td>"
-  +"\n                          <td style=\"text-align:right;padding:6px 10px;border:1px solid #ddd;color:#c0392b;\">₹${Math.round(grandAdv).toLocaleString(\"en-IN\")}</td>"
-  +"\n                          <td style=\"text-align:right;padding:6px 10px;border:1px solid #ddd;font-weight:800;color:#1a5c1a;\">₹${Math.round(grandPay).toLocaleString(\"en-IN\")}</td>"
-  +"\n          <td style=\"text-align:right;padding:6px 10px;border:1px solid #ddd;font-weight:800;color:#c0392b;\">₹${Math.round(grandDue).toLocaleString(\"en-IN\")}</td>"
-  +"\n                        </tr></tbody></table></body></html>";
+                      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Sub-Org Summary</title>
+                        <style>body{font-family:Georgia,serif;padding:20px;}h2{color:#1a2a4a;}table{border-collapse:collapse;width:100%;font-size:12px;}th{background:#1a2a4a;color:#fff;padding:7px 10px;border:1px solid #ddd;}.total-row td{font-weight:800;background:#e8f0ff;border-top:2px solid #1a2a4a;}@media print{@page{margin:8mm;size:A4 landscape;}}</style>
+                        </head><body><h2>📊 Sub-Org Summary</h2>
+                        <div style="font-size:13px;color:#555;margin-bottom:10px;">Bill Date: ${fmtDate(BILL_DATE)} | Total Sub-Orgs: ${subOrgs.length}</div>
+                        <table><thead><tr><th>Acc No</th><th>Sub-Org Name</th><th>Village</th><th>Growers</th><th>Qty</th><th>Crop Value</th><th>Adv+Int</th><th>Bal to Pay</th><th>Bal Due</th><th>Payable to Sub-Org (This Bill)</th></tr></thead>
+                        <tbody>${rows}
+                        <tr class="total-row"><td colspan="3">GRAND TOTAL</td>
+                          <td style="text-align:right;padding:6px 10px;border:1px solid #ddd;">${subOrgs.reduce((s,so)=>s+(so.growers||[]).length,0)}</td>
+                          <td style="text-align:right;padding:6px 10px;border:1px solid #ddd;">${grandQty.toLocaleString("en-IN")}</td>
+                          <td style="text-align:right;padding:6px 10px;border:1px solid #ddd;">₹${Math.round(grandCrop).toLocaleString("en-IN")}</td>
+                          <td style="text-align:right;padding:6px 10px;border:1px solid #ddd;color:#c0392b;">₹${Math.round(grandAdv).toLocaleString("en-IN")}</td>
+                          <td style="text-align:right;padding:6px 10px;border:1px solid #ddd;font-weight:800;color:#1a5c1a;">₹${Math.round(grandPay).toLocaleString("en-IN")}</td>
+                          <td style="text-align:right;padding:6px 10px;border:1px solid #ddd;font-weight:800;color:#c0392b;">₹${Math.round(grandDue).toLocaleString("en-IN")}</td>
+                          <td style="text-align:right;padding:6px 10px;border:1px solid #ddd;font-weight:800;color:${grandPayableThisBill>=0?"#2d5a8a":"#c0392b"};">${grandPayableThisBill>=0?"":"− "}₹${Math.abs(Math.round(grandPayableThisBill)).toLocaleString("en-IN")}</td>
+                        </tr></tbody></table></body></html>`;
                       const w=window.open("","_blank"); w.document.write(html); w.document.close(); setTimeout(()=>w.print(),400);
                     }} style={{background:"#1a2a4a",color:"#fff",border:"none",borderRadius:6,padding:"9px 16px",fontWeight:700,fontSize:13,cursor:"pointer"}}>🖨️ Print Summary</button>
                   </div>
@@ -3857,13 +3897,13 @@ export default function App() {
                     <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
                       <thead>
                         <tr style={{background:"#1a2a4a",color:"#fff"}}>
-                          {["Acc No","Sub-Org Name","Village","Growers","Total Qty","Crop Value","Adv+Int","Bal to Pay","Bal Due"].map(h=>(
+                          {["Acc No","Sub-Org Name","Village","Growers","Total Qty","Crop Value","Adv+Int","Bal to Pay","Bal Due","Payable to Sub-Org (This Bill)"].map(h=>(
                             <th key={h} style={{padding:"8px 10px",textAlign:h==="Sub-Org Name"||h==="Village"?"left":"center",fontWeight:600,fontSize:12}}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {soSummary.map(({so,totalAdvWI,totalQty,totalCropVal,balance},i)=>(
+                        {soSummary.map(({so,totalAdvWI,totalQty,totalCropVal,balance,payableThisBill},i)=>(
                           <tr key={i} onClick={()=>{setSelectedSubOrgIdx(i);setSubOrgTab("form");}} style={{background:i%2===0?"#f5f8ff":"#fff",cursor:"pointer",borderBottom:"1px solid #d0e4f4"}}
                             onMouseEnter={e=>e.currentTarget.style.background="#e8f0ff"}
                             onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"#f5f8ff":"#fff"}>
@@ -3880,6 +3920,9 @@ export default function App() {
                             <td style={{padding:"8px 10px",textAlign:"right",fontWeight:700,color:"#c0392b"}}>
                               {balance<0?fmt(Math.abs(balance)):"—"}
                             </td>
+                            <td style={{padding:"8px 10px",textAlign:"right",fontWeight:800,color:payableThisBill>=0?"#2d5a8a":"#c0392b",background:"#f0f5ff"}}>
+                              {payableThisBill>=0?fmt(payableThisBill):"− "+fmt(Math.abs(payableThisBill))}
+                            </td>
                           </tr>
                         ))}
                         <tr style={{background:"#e8f0ff",fontWeight:800,borderTop:"2px solid #1a2a4a"}}>
@@ -3890,6 +3933,9 @@ export default function App() {
                           <td style={{padding:"8px 10px",textAlign:"right",color:"#c0392b"}}>{fmt(grandAdv)}</td>
                           <td style={{padding:"8px 10px",textAlign:"right",fontWeight:700,color:"#1a5c1a"}}>{fmt(grandPay)}</td>
                           <td style={{padding:"8px 10px",textAlign:"right",fontWeight:700,color:"#c0392b"}}>{fmt(grandDue)}</td>
+                          <td style={{padding:"8px 10px",textAlign:"right",fontWeight:800,color:grandPayableThisBill>=0?"#2d5a8a":"#c0392b",background:"#dce8ff"}}>
+                            {grandPayableThisBill>=0?fmt(grandPayableThisBill):"− "+fmt(Math.abs(grandPayableThisBill))}
+                          </td>
                         </tr>
                       </tbody>
                     </table>
