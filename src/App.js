@@ -3838,7 +3838,7 @@ export default function App() {
               const grandCrop = soSummary.reduce((s,x)=>s+x.totalCropVal,0);
               const grandPay = soSummary.filter(x=>x.balance>=0).reduce((s,x)=>s+x.balance,0);
               const grandDue = soSummary.filter(x=>x.balance<0).reduce((s,x)=>s+Math.abs(x.balance),0);
-              const grandPayableThisBill = soSummary.reduce((s,x)=>s+x.payableThisBill,0);
+              const grandPayableThisBill = soSummary.filter(x=>x.payableThisBill>=0).reduce((s,x)=>s+x.payableThisBill,0);
               return (
                 <div>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
@@ -3855,7 +3855,7 @@ export default function App() {
                           <td style="padding:6px 10px;border:1px solid #ddd;text-align:right;">₹${Math.round(totalCropVal).toLocaleString("en-IN")}</td>
                           <td style="padding:6px 10px;border:1px solid #ddd;text-align:right;color:#c0392b;">₹${Math.round(totalAdvWI).toLocaleString("en-IN")}</td>
                           <td style="padding:6px 10px;border:1px solid #ddd;text-align:right;font-weight:700;color:${balance>=0?"#1a5c1a":"#c0392b"};">₹${Math.abs(Math.round(balance)).toLocaleString("en-IN")} ${balance>=0?"(Pay)":"(Due)"}</td>
-                          <td style="padding:6px 10px;border:1px solid #ddd;text-align:right;font-weight:800;color:${payableThisBill>=0?"#2d5a8a":"#c0392b"};background:#f0f5ff;">${payableThisBill>=0?"":"− "}₹${Math.abs(Math.round(payableThisBill)).toLocaleString("en-IN")}</td>
+                          <td style="padding:6px 10px;border:1px solid #ddd;text-align:right;font-weight:800;color:#2d5a8a;background:#f0f5ff;">${payableThisBill>=0?"₹"+Math.round(payableThisBill).toLocaleString("en-IN"):"—"}</td>
                         </tr>`;
                       }).join("");
                       const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Sub-Org Summary</title>
@@ -3871,7 +3871,7 @@ export default function App() {
                           <td style="text-align:right;padding:6px 10px;border:1px solid #ddd;color:#c0392b;">₹${Math.round(grandAdv).toLocaleString("en-IN")}</td>
                           <td style="text-align:right;padding:6px 10px;border:1px solid #ddd;font-weight:800;color:#1a5c1a;">₹${Math.round(grandPay).toLocaleString("en-IN")}</td>
                           <td style="text-align:right;padding:6px 10px;border:1px solid #ddd;font-weight:800;color:#c0392b;">₹${Math.round(grandDue).toLocaleString("en-IN")}</td>
-                          <td style="text-align:right;padding:6px 10px;border:1px solid #ddd;font-weight:800;color:${grandPayableThisBill>=0?"#2d5a8a":"#c0392b"};">${grandPayableThisBill>=0?"":"− "}₹${Math.abs(Math.round(grandPayableThisBill)).toLocaleString("en-IN")}</td>
+                          <td style="text-align:right;padding:6px 10px;border:1px solid #ddd;font-weight:800;color:#2d5a8a;">₹${Math.round(grandPayableThisBill).toLocaleString("en-IN")}</td>
                         </tr></tbody></table></body></html>`;
                       const w=window.open("","_blank"); w.document.write(html); w.document.close(); setTimeout(()=>w.print(),400);
                     }} style={{background:"#1a2a4a",color:"#fff",border:"none",borderRadius:6,padding:"9px 16px",fontWeight:700,fontSize:13,cursor:"pointer"}}>🖨️ Print Summary</button>
@@ -3921,7 +3921,7 @@ export default function App() {
                               {balance<0?fmt(Math.abs(balance)):"—"}
                             </td>
                             <td style={{padding:"8px 10px",textAlign:"right",fontWeight:800,color:payableThisBill>=0?"#2d5a8a":"#c0392b",background:"#f0f5ff"}}>
-                              {payableThisBill>=0?fmt(payableThisBill):"− "+fmt(Math.abs(payableThisBill))}
+                              {payableThisBill>=0?fmt(payableThisBill):"—"}
                             </td>
                           </tr>
                         ))}
@@ -3934,7 +3934,7 @@ export default function App() {
                           <td style={{padding:"8px 10px",textAlign:"right",fontWeight:700,color:"#1a5c1a"}}>{fmt(grandPay)}</td>
                           <td style={{padding:"8px 10px",textAlign:"right",fontWeight:700,color:"#c0392b"}}>{fmt(grandDue)}</td>
                           <td style={{padding:"8px 10px",textAlign:"right",fontWeight:800,color:grandPayableThisBill>=0?"#2d5a8a":"#c0392b",background:"#dce8ff"}}>
-                            {grandPayableThisBill>=0?fmt(grandPayableThisBill):"− "+fmt(Math.abs(grandPayableThisBill))}
+                            {fmt(grandPayableThisBill)}
                           </td>
                         </tr>
                       </tbody>
